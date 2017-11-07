@@ -70,24 +70,24 @@ class RunXGB:
 
         # Show results
         res = []
+        for c in ['train-auc-mean', 'test-auc-mean', 'train-auc-std', 'test-auc-std', 'num_rounds']:
+            factor = 100 if c != 'num_rounds' else 1
+
+            res.append({'type': c,
+                        'val': round(np.mean(results[c]) * factor, 2),
+                        'std': round(np.std(results[c]) * factor, 2),
+                        'min': round(np.min(results[c]) * factor, 2),
+                        'max': round(np.max(results[c]) * factor, 2),
+                        'median': round(np.median(results[c]) * factor, 2)
+                        })
+
+            # print('Avg %s: %.2f +- %.2f; [%.2f .. %.2f]; range: %.2f; median: %.2f' %
+            #       (c, np.mean(results[c]) * factor, np.std(results[c]) * factor,
+            #        np.min(results[c]) * factor,
+            #        np.max(results[c]) * factor, (np.max(results[c]) - np.min(results[c])) * factor,
+            #        np.median(results[c]) * factor))
+
         if debug:
-            for c in ['train-auc-mean', 'test-auc-mean', 'train-auc-std', 'test-auc-std', 'num_rounds']:
-                factor = 100 if c != 'num_rounds' else 1
-
-                res.append({'type': c,
-                            'val': round(np.mean(results[c]) * factor, 2),
-                            'std': round(np.std(results[c]) * factor, 2),
-                            'min': round(np.min(results[c]) * factor, 2),
-                            'max': round(np.max(results[c]) * factor, 2),
-                            'median': round(np.median(results[c]) * factor, 2)
-                            })
-
-                # print('Avg %s: %.2f +- %.2f; [%.2f .. %.2f]; range: %.2f; median: %.2f' %
-                #       (c, np.mean(results[c]) * factor, np.std(results[c]) * factor,
-                #        np.min(results[c]) * factor,
-                #        np.max(results[c]) * factor, (np.max(results[c]) - np.min(results[c])) * factor,
-                #        np.median(results[c]) * factor))
-
             # print('Results of the first round', iter_cv_result[0])
             print('Best iteration:', num_boost_rounds)
 
