@@ -1,0 +1,5 @@
+# Bagging
+# df_with_replacements = df.sample(replace=True, axis=1)
+# target_with_replacements = target.ix[df_with_replacements.index]
+
+# test_df['full_count'] = test_df.apply(lambda x: x.count(), axis=1)
