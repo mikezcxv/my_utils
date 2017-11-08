@@ -30,7 +30,8 @@ def show_count_by_dates(df, date_column, file_name='bad_rate.png', folder_path='
 
 
 def show_bad_rate(df, date_column, target_name, file_name='bad_rate.png', folder_path='imgs',
-                  sens=14, fig_size=(16, 9), inline=False):
+                  sens=32, fig_size=(16, 9), inline=False):
+
     df_date = df[[date_column, target_name]]
     df_date[date_column] = df_date[date_column].astype("datetime64")
     df_date['dm'] = df_date[date_column].apply(lambda x: x.year * 1000 + x.month * 10 + int(x.day / sens))
@@ -48,8 +49,8 @@ def show_bad_rate(df, date_column, target_name, file_name='bad_rate.png', folder
     plt.clf()
 
 
-def show_heat_map(df, file_name, folder_path='imgs', width=24, height=11, inline=False):
-    corr_matrix = df.corr()
+def show_heat_map(df, file_name, folder_path='imgs', width=24, height=11, inline=False, method='pearson'):
+    corr_matrix = df.corr(method)
     plt.figure(figsize=(width, height))
     sns.heatmap(corr_matrix, cmap='bwr')
 

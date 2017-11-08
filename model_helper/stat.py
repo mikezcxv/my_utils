@@ -51,8 +51,8 @@ def show_null(df):
     print(df.isnull().sum())
 
 
-def show_bad_level(df, target, pk_name):
-    print(df[[pk_name, target]].groupby([target], as_index=False).agg(['count']))
+def group_bad_level(df, target, pk_name):
+    return df[[pk_name, target]].groupby([target], as_index=False).agg(['count'])
 
 
 # TODO check
@@ -247,7 +247,7 @@ def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target
     return fin
 
 
-def show_binary_comparison_for_regression(df, feat_name, by_fea = 'y', left=0, right=1):
+def show_binary_comparison_for_regression(df, feat_name, by_fea='y', left=0, right=1):
     print(df.groupby(feat_name, as_index=False)[by_fea]
           .agg(['count', 'mean', 'min', 'max']))
 
@@ -305,17 +305,17 @@ def iv2(df, column_name, y, min_in_group=30, debug=False, max_classes=200, retur
     return s
 
 
-def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), only_columns=(), result_prefix=''):
+def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), only_columns=(), result_prefix='',
+                  set_na='-10'):
     out_csv = True
-    na_value = -10
-    df = Transform().cast_multi_train(df, na_val='-10')
+    na_value = set_na
+    df = Transform().cast_multi_train(df, na_val=set_na)
 
     # Handle categorical
-    X = df.ix[:, df.columns != target_name]
-    y = df.ix[:, target_name]
+    X = df.loc[:, df.columns != target_name]
+    y = df.loc[:, target_name]
 
-    X_chunks = {}
-    y_chunks = {}
+    X_chunks, y_chunks = {}, {}
     l = len(X)
     count_ranges = len(split_ranges) - 1
     for i in range(0, count_ranges):
@@ -332,6 +332,7 @@ def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), o
             count_na[str(i) + '_' + c] = len(_df.loc[np.isnan(_df[c])])
         _df.fillna(na_value, inplace=True)
 
+    res = []
     df_csv = pd.DataFrame(columns=['Feature', 'Time period', 'Auc', 'IV', 'Count Groups', 'Count NA', 'Percent NA'])
     for c in X.columns.values:
         if c in skip_columns:
@@ -350,7 +351,16 @@ def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), o
             count_groups[i] = len(_df[c].value_counts().to_dict())
             if count_groups[i] > 1:
                 f_roc[i] = roc_auc_score(_y, _df[c])
-                f_roc_clean[i] = roc_auc_score(_y.loc[_df[c] != na_value], _df.loc[_df[c] != na_value][c])
+                count_groups_na = len(_df.loc[_df[c] != na_value][c].value_counts().to_dict())
+
+                if count_groups_na > 1:
+                    if len(_y.loc[_df[c] != na_value].unique()) == 1:
+                        f_roc_clean[i] = 1
+                    else:
+                        f_roc_clean[i] = roc_auc_score(_y.loc[_df[c] != na_value][c],
+                                                       _df.loc[_df[c] != na_value][c])
+                else:
+                    f_roc_clean[i] = None
             else:
                 f_roc[i] = -0.00001
                 f_roc_clean[i] = -0.00001
@@ -384,10 +394,23 @@ def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), o
         for i in range(count_ranges):
             percent_na = round(count_na[str(i) + '_' + c] / len(X_chunks[i]), 2) * 100
             report += "PERIOD {}: Auc {:.5f}[{:.5f}]; IV :{:.5f}[{:.5f}]; Gr. {}; NA: {} {}%\n".format(
-                i, f_roc[i], f_roc_clean[i], _iv[i], _iv_clean[i], count_groups[i], count_na[str(i) + '_' + c],
+                i, f_roc[i], f_roc_clean[i], _iv[i], _iv_clean[i],
+                count_groups[i], count_na[str(i) + '_' + c],
                 percent_na)
             df_csv.loc[len(df_csv)] = [c, i, round(f_roc_clean[i], 6), round(_iv_clean[i], 6), count_groups[i],
                                        count_na[str(i) + '_' + c], percent_na]
+
+            # res.append({
+            #     "PERIOD {}: Auc {:.5f}[{:.5f}]; IV :{:.5f}[{:.5f}];".format(
+            #         i,
+            #         f_roc[i],
+            #         f_roc_clean[i],
+            #         _iv[i],
+            #         _iv_clean[i],
+            #         'groups': count_groups[i],
+            #         'count_na': count_na[str(i) + '_' + c],
+            #         'percent_na': percent_na
+            # })
 
         print(c)
         print(flag + report + "\033[0m")

@@ -1,6 +1,7 @@
 import re
 import sys
 import numpy as np
+import operator
 
 
 # sys.path.append(os.path.expanduser('~/PyProjects/my_utils'))
@@ -87,3 +88,6 @@ def report_useless_features(model, threshold_useless=3, debug=False):
 
     return list_useless, almost_useless
 
+
+# TODO sort dictionary
+# sorted_x = sorted(top2.items(), key=operator.itemgetter(1), reverse=True)
