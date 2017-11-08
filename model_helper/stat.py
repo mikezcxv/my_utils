@@ -306,7 +306,7 @@ def iv2(df, column_name, y, min_in_group=30, debug=False, max_classes=200, retur
 
 
 def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), only_columns=(), result_prefix='',
-                  set_na='-10'):
+                  set_na=-1):
     out_csv = True
     na_value = set_na
     df = Transform().cast_multi_train(df, na_val=set_na)
@@ -351,14 +351,14 @@ def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), o
             count_groups[i] = len(_df[c].value_counts().to_dict())
             if count_groups[i] > 1:
                 f_roc[i] = roc_auc_score(_y, _df[c])
-                count_groups_na = len(_df.loc[_df[c] != na_value][c].value_counts().to_dict())
+                count_groups_na = len(_df.loc[~_df[c].isin([na_value])][c].value_counts().to_dict())
 
                 if count_groups_na > 1:
-                    if len(_y.loc[_df[c] != na_value].unique()) == 1:
+                    if len(_y.loc[~_df[c].isin([na_value])].unique()) == 1:
                         f_roc_clean[i] = 1
                     else:
-                        f_roc_clean[i] = roc_auc_score(_y.loc[_df[c] != na_value][c],
-                                                       _df.loc[_df[c] != na_value][c])
+                        f_roc_clean[i] = roc_auc_score(_y.loc[~_df[c].isin([na_value])],
+                                                       _df.loc[~_df[c].isin([na_value])][c])
                 else:
                     f_roc_clean[i] = None
             else:
@@ -367,7 +367,7 @@ def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), o
 
             # TODO don't calculate IV for continuous vars
             _iv[i] = iv2(_df, c, _y)
-            _iv_clean[i] = iv2(_df.loc[_df[c] != na_value], c, _y)
+            _iv_clean[i] = iv2(_df.loc[~_df[c].isin([na_value])], c, _y)
             # _iv = 0 # s = 1 / (1 + np.exp(-df_train[c])) # f_roc2 = roc_auc_score(target_train, s)
 
             # _ks = compare_binary(_df, 'SecondPaymentDelinquencyClass', target=c)
