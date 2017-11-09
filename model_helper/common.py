@@ -1,4 +1,5 @@
 import re
+import os
 import sys
 import numpy as np
 import operator
@@ -8,17 +9,10 @@ import operator
 # from model_helper.common import *
 
 
-def find_lists_intersection(*l):
-    """
-    Get intersection of lists for 1 dim lists only
-    :param l:
-    :return:
-    """
-    rest = l[0]
-    for i in range(1, len(l)):
-        rest = list(filter(set(rest).__contains__, l[i]))
-
-    return rest
+# DF related
+def shape_info(df, msg, prefix='After', debug=True):
+    if debug:
+        print(prefix + ' ' + msg + ': %s x %s' % df.shape)
 
 
 def find_columns_like(df, pattern, debug=True):
@@ -30,26 +24,6 @@ def find_columns_like(df, pattern, debug=True):
             res.append(c)
 
     return res
-
-
-def asd():
-    sys.exit()
-
-
-def get_pairs(columns):
-    result = []
-    for i in range(0, len(columns)):
-        for j in range(0, len(columns)):
-            if j > i:
-                result.append(columns[i] + '*' + columns[j])
-
-    return result
-
-
-def set_if_none(data, field, value):
-    if data[field] is None:
-        data[field] = value
-    return data
 
 
 def change_datatype(df):
@@ -71,6 +45,44 @@ def change_datatype_float(df):
         df[col] = df[col].astype(np.float32)
 
 
+def get_pairs(columns):
+    result = []
+    for i in range(0, len(columns)):
+        for j in range(0, len(columns)):
+            if j > i:
+                result.append(columns[i] + '*' + columns[j])
+
+    return result
+
+
+def find_lists_intersection(*l):
+    """
+    Get intersection of lists for 1 dim lists only
+    :param l:
+    :return:
+    """
+    rest = l[0]
+    for i in range(1, len(l)):
+        rest = list(filter(set(rest).__contains__, l[i]))
+
+    return rest
+
+
+def asd():
+    sys.exit()
+
+
+# Dictionary related
+def set_if_none(data, field, value):
+    if data[field] is None:
+        data[field] = value
+    return data
+
+
+def sort_dictionary(data, reverse=True):
+    return sorted(data.items(), key=operator.itemgetter(1), reverse=reverse)
+
+
 # TODO create separate helper
 def report_useless_features(model, threshold_useless=3, debug=False):
     scores = model.get_fscore()
@@ -89,5 +101,38 @@ def report_useless_features(model, threshold_useless=3, debug=False):
     return list_useless, almost_useless
 
 
-# TODO sort dictionary
-# sorted_x = sorted(top2.items(), key=operator.itemgetter(1), reverse=True)
+# File system helper
+# TODO expand helper
+def get_dir_files(dir_path):
+    res = []
+    for dirname, dirnames, filenames in os.walk(dir_path):
+        # for subdirname in dirnames:
+        #      print(os.path.join(dirname, subdirname))
+
+        for filename in filenames:
+            res.append(os.path.join(dirname, filename))
+
+            #     if '.git' in dirnames:
+            # don't go into any .git directories.
+            #         dirnames.remove('.git')
+
+    return res
+
+
+# TODO analyze NA
+# Trying to find custom designations of NA
+# j = 0
+# total_len = len(df_all)
+# for c in df_all.columns.values:
+#     different_groups = df_all[c].unique()
+#     if len(different_groups) > 1 and (
+#             len(find_lists_intersection(['-1', -1, -999, 999], different_groups))
+#     ):
+#
+#         count_weidr = len(df_all.loc[df_all[c].isin(['-1', -1, -999, 999])])
+#         if count_weidr / total_len > 0.01:
+#             print(c, count_weidr)
+#
+#     j += 1
+#     if j > 500:
+#         break
