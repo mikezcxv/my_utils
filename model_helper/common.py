@@ -10,9 +10,10 @@ import operator
 
 
 # DF related
-def shape_info(df, msg, prefix='After', debug=True):
+def shape_info(df, msg, prefix='', debug=True):
     if debug:
-        print(prefix + ' ' + msg + ': %s x %s' % df.shape)
+        prefix = prefix + ' ' if prefix else ''
+        print(prefix + msg + ': %s x %s' % df.shape)
 
 
 def find_columns_like(df, pattern, debug=True):

@@ -1,10 +1,14 @@
 import math
+import re
 import scipy.stats as stats
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from model_helper.Transform import *
+import matplotlib
+matplotlib.use('agg')
+import matplotlib.pyplot as plt
 
 
 # describe, show_na, analyze_na - overall
@@ -53,6 +57,23 @@ def show_null(df):
 
 def group_bad_level(df, target, pk_name):
     return df[[pk_name, target]].groupby([target], as_index=False).agg(['count'])
+
+
+def check_normality(data_list, dist='norm', debug=False):
+    shapiro = None
+    if dist == 'norm':
+        shapiro = stats.shapiro(data_list)
+    ks = stats.kstest(data_list, dist)
+    anderson = stats.anderson(data_list, dist=dist)
+
+    if debug:
+        print("""For Anderson's: Critical values provided are for the following significance levels:
+                 normal / exponenential      15%, 10%, 5%, 2.5%, 1%
+                 logistic                    25%, 10%, 5%, 2.5%, 1%, 0.5%
+                 Gumbel                      25%, 10%, 5%, 2.5%, 1%
+        """)
+
+    return {'shapiro': shapiro, 'ks': ks, 'anderson': anderson}
 
 
 # TODO check
@@ -444,3 +465,27 @@ def show_statuses_info(df):
     c['p'] = c['count'] / len(df)
     c['p'] *= 100
     print(c)
+
+
+def explore_var(df, name):
+    l = len(df)
+    count_groups = len(df[name].unique())
+    count_na = df[name].isnull().sum()
+
+    print('Count groups: %d' % count_groups)
+    print('Count NA: %d [%.2f%%]' % (count_na, round(count_na * 100 / l, 2)))
+
+    var_type = None
+    if re.match('^(float|int)', str(df_raw[c].dtype)):
+        var_type = 'cont'
+
+    vc = df[name].value_counts()
+    count_most_frequent = vc.idxmax()
+    print('Most frequent value %s - %d [%.2f%%]' % (count_most_frequent,
+                                                    vc.max(), round(vc.max() * 100 / l, 2)))
+
+    if var_type == 'cont':
+        df[name].hist(bins='auto' if count_groups < 30 else 50)
+        plt.show()
+
+    print()

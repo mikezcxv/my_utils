@@ -3,6 +3,7 @@ from model_helper.common import *
 from model_helper.stat import *
 
 
+# TODO remove as it is in a common helper
 def shape_info(df, msg, prefix='After', debug=True):
     if debug:
         print(prefix + ' ' + msg + ': %s x %s' % df.shape)
