@@ -476,7 +476,7 @@ def explore_var(df, name):
     print('Count NA: %d [%.2f%%]' % (count_na, round(count_na * 100 / l, 2)))
 
     var_type = None
-    if re.match('^(float|int)', str(df_raw[c].dtype)):
+    if re.match('^(float|int)', str(df[c].dtype)):
         var_type = 'cont'
 
     vc = df[name].value_counts()
