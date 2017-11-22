@@ -18,7 +18,7 @@ import pandas as pd
 
 
 def show_memory_usage(df):
-    m = df.memory_usage().sum() / 1024 ** 2
+    m = df.memory_usage(True, deep=True).sum() / 1024 ** 2
     print("Memory usage of properties dataframe is :", m, " MB")
     return m
 
@@ -163,4 +163,3 @@ class GetDfTypes:
 # # plt.show()
 #
 # print(np.std(l), np.min(l), np.max(l))
-

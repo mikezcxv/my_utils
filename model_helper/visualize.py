@@ -222,3 +222,14 @@ def draw_barplots(df, target_name, period="year", file_suffix=""):
             ax.set(xlabel=c + ". NA: " + str(len(df.loc[np.isnan(df[c])])) + "; IV: " + str(_iv))
             plt.savefig("imgs/" + file_suffix + "_" +  c + ".png")
             plt.clf()
+
+
+#Draft
+def plot_one_xgboost_tree():
+    # plot_tree(model, 0)
+
+    fig = matplotlib.pyplot.gcf()
+    # fig.set_size_inches(50, 50)
+    fig.set_figwidth(30)
+    fig.set_figheight(30)
+    plt.show()
