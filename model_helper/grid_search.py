@@ -61,6 +61,89 @@ def get_optimal_params(df, target, oos=.8):
     return clf
 
 
+# TODO draft
+# def improved_bayesian():
+#     def wrap_cv(min_child_weight, colsample_bytree, max_depth, subsample, gamma, alpha, reg_lambda,
+#                 debug=False, num_folds=6, max_boost_rounds=300, verbose_eval=50, count_extra_run=3,
+#                 train_test_penalize=0.05):
+#         # Data structure in which to save out-of-folds preds
+#         early_stopping_rounds = 30
+#
+#         params['min_child_weight'] = int(min_child_weight)
+#         params['cosample_bytree'] = max(min(colsample_bytree, 1), 0)
+#         params['max_depth'] = int(max_depth)
+#         params['subsample'] = max(min(subsample, 1), 0)
+#         params['gamma'] = max(gamma, 0)
+#         params['alpha'] = max(alpha, 0)
+#         params['reg_lambda'] = max(reg_lambda, 0)
+#
+#         #     , target_train = tr.ix[:, tr.columns != target], tr.ix[:, target]
+#
+#         results = {'test-auc-mean': [], 'test-auc-std': [], 'train-auc-mean': [],
+#                    'train-auc-std': [], 'num_rounds': []}
+#         iter_cv_result = []
+#         for i in range(count_extra_run):
+#             verb = verbose_eval if i < 2 else None
+#             iter_cv_result.append(xgb.cv(dict(params, silent=1, seed=i + 1), dtrain,
+#                                          num_boost_round=max_boost_rounds,
+#                                          early_stopping_rounds=early_stopping_rounds,
+#                                          verbose_eval=verb, show_stdv=False,
+#                                          metrics={'auc'}, stratified=False, nfold=num_folds))
+#
+#             results['num_rounds'].append(len(iter_cv_result[i]))
+#             t = iter_cv_result[i].iloc[results['num_rounds'][i] - 1, :]
+#
+#             for c in ['test-auc-mean', 'test-auc-std', 'train-auc-mean', 'train-auc-std']:
+#                 results[c].append(t[c])
+#
+#         num_boost_rounds = np.mean(results['num_rounds'])
+#
+#         # Show results
+#         res = []
+#         for c in ['train-auc-mean', 'test-auc-mean', 'train-auc-std', 'test-auc-std', 'num_rounds']:
+#             factor = 100 if c != 'num_rounds' else 1
+#
+#             res.append({'type': c,
+#                         'val': round(np.mean(results[c]) * factor, 2),
+#                         'std': round(np.std(results[c]) * factor, 2),
+#                         'min': round(np.min(results[c]) * factor, 2),
+#                         'max': round(np.max(results[c]) * factor, 2),
+#                         'median': round(np.median(results[c]) * factor, 2)
+#                         })
+#
+#         if debug:
+#             print('Best iteration:', num_boost_rounds)
+#
+#         r = pd.DataFrame(res)[['type', 'val', 'std', 'min', 'max', 'median']]
+#
+#         train_val = float(r.loc[r['type'] == 'train-auc-mean']['val'])
+#         test_val = float(r.loc[r['type'] == 'test-auc-mean']['val'])
+#         return test_val - (test_val - train_val) * train_test_penalize
+#
+#     dtrain = xgb.DMatrix(df_train, target_train)
+#
+#     # r = wrap_cv(11, 0.7, 3, 0.5, .25, 1, 20,
+#     #         debug=False, num_folds=6, max_boost_rounds=5, verbose_eval=50, count_extra_run=3)
+#
+#     num_rounds = 300
+#     random_state = 42
+#     num_iter = 100
+#     init_points = 2
+#     params = {'eta': 0.05, 'silent': 1, 'eval_metric': 'auc', 'verbose_eval': True, 'seed': random_state,
+#               'objective': 'binary:logistic', }
+#
+#     xgbBO = BayesianOptimization(wrap_cv, {'min_child_weight': (11, 300),
+#                                            'colsample_bytree': (0.7, 0.8),
+#                                            'max_depth': (3, 5),
+#                                            'subsample': (0.45, 0.75),
+#                                            'gamma': (.25, 3),
+#                                            'alpha': (0, 10),
+#                                            'reg_lambda': (50, 150)
+#                                            })
+#
+#     xgbBO.maximize(init_points=init_points, n_iter=num_iter)
+
+
 # def draft_bayes_opt():
 #     from bayes_opt import BayesianOptimization
 #

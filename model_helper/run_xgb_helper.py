@@ -554,6 +554,63 @@ class RunXGB:
         result.to_csv('imgs/' + files_prefix + 'result.csv', index=False)
         return _roc
 
+    @staticmethod
+    def wrap_cv(min_child_weight, colsample_bytree, max_depth, subsample, gamma, alpha, reg_lambda,
+                debug=False, num_folds=6, max_boost_rounds=300, verbose_eval=50, count_extra_run=3,
+                train_test_penalize=0.05):
+        # Data structure in which to save out-of-folds preds
+        early_stopping_rounds = 30
+
+        params['min_child_weight'] = int(min_child_weight)
+        params['cosample_bytree'] = max(min(colsample_bytree, 1), 0)
+        params['max_depth'] = int(max_depth)
+        params['subsample'] = max(min(subsample, 1), 0)
+        params['gamma'] = max(gamma, 0)
+        params['alpha'] = max(alpha, 0)
+        params['reg_lambda'] = max(reg_lambda, 0)
+
+        #     , target_train = tr.ix[:, tr.columns != target], tr.ix[:, target]
+
+        results = {'test-auc-mean': [], 'test-auc-std': [], 'train-auc-mean': [],
+                   'train-auc-std': [], 'num_rounds': []}
+        iter_cv_result = []
+        for i in range(count_extra_run):
+            verb = verbose_eval if i < 2 else None
+            iter_cv_result.append(xgb.cv(dict(params, silent=1, seed=i + 1), dtrain,
+                                         num_boost_round=max_boost_rounds,
+                                         early_stopping_rounds=early_stopping_rounds,
+                                         verbose_eval=verb, show_stdv=False,
+                                         metrics={'auc'}, stratified=False, nfold=num_folds))
+
+            results['num_rounds'].append(len(iter_cv_result[i]))
+            t = iter_cv_result[i].iloc[results['num_rounds'][i] - 1, :]
+
+            for c in ['test-auc-mean', 'test-auc-std', 'train-auc-mean', 'train-auc-std']:
+                results[c].append(t[c])
+
+        num_boost_rounds = np.mean(results['num_rounds'])
+
+        # Show results
+        res = []
+        for c in ['train-auc-mean', 'test-auc-mean', 'train-auc-std', 'test-auc-std', 'num_rounds']:
+            factor = 100 if c != 'num_rounds' else 1
+
+            res.append({'type': c,
+                        'val': round(np.mean(results[c]) * factor, 2),
+                        'std': round(np.std(results[c]) * factor, 2),
+                        'min': round(np.min(results[c]) * factor, 2),
+                        'max': round(np.max(results[c]) * factor, 2),
+                        'median': round(np.median(results[c]) * factor, 2)
+                        })
+
+        if debug:
+            print('Best iteration:', num_boost_rounds)
+
+        r = pd.DataFrame(res)[['type', 'val', 'std', 'min', 'max', 'median']]
+
+        train_val = float(r.loc[r['type'] == 'train-auc-mean']['val'])
+        test_val = float(r.loc[r['type'] == 'test-auc-mean']['val'])
+        return test_val - (test_val - train_val) * train_test_penalize
 
 '''
     def final_scores(self, num_boost_round, show_graph=1, threshold_useless=3, files_prefix=''):

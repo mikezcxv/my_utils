@@ -11,11 +11,23 @@ df_raw.fillna(-1, inplace=True)
 target, pk = 'isfraud', 'applicationid'
 oos, l = .8, len(df_raw)
 
-tr = df_raw.iloc[:round(l * oos), ]
-ts = df_raw.iloc[round(l * oos):, ]
+# df_raw_copy = df_raw.loc[:, df_raw.columns != target]
+# df_raw_copy.loc[:, df_raw_copy.columns != pk].apply(lambda x: x / 10)
 
-train, labels = tr.loc[:, tr.columns != target], tr.loc[:, target]
-test, target_test = ts.loc[:, ts.columns != target], ts.loc[:, target]
+# df_raw = df_raw.merge(df_raw_copy, on=pk)
+# df_raw = df_raw.merge(df_raw_copy2, on=pk)
+
+# .loc[:, tr.columns != target]
+
+data = df_raw.loc[:, df_raw.columns != target]
+y = df_raw.loc[:, target]
+data = (data - data.mean()) / (data.max() - data.min())
+
+# tr = df_raw.iloc[:round(l * oos), ]
+# ts = df_raw.iloc[round(l * oos):, ]
+
+train, labels = data.iloc[:round(l * oos),], y.iloc[:round(l * oos), ]
+test, target_test = data.iloc[round(l * oos):,], y.iloc[round(l * oos):,]
 # id_test = ts.ix[:, pk]
 
 train, test = train.drop([pk], axis=1), test.drop([pk], axis=1)
@@ -31,15 +43,15 @@ y_train = labels.values
 
 # print(tr.shape, ts.shape)
 
-# # pre-processing: divide by max and substract mean
-scale = np.max(X_train)
-X_train /= scale
-X_test /= scale
+# pre-processing: divide by max and substract mean
+# scale = np.max(X_train)
+# X_train /= scale
+# X_test /= scale
 
-mean = np.std(X_train)
+# mean = np.std(X_train)
 
-X_train -= mean
-X_test -= mean
+# X_train -= mean
+# X_test -= mean
 
 input_dim = X_train.shape[1]
 # Uncomment for multiclass
@@ -47,11 +59,11 @@ input_dim = X_train.shape[1]
 
 # Here's a Deep Dumb MLP (DDMLP)
 model = Sequential()
-model.add(Dense(100, input_dim=input_dim, activation='relu'))
-model.add(Dropout(0.5))
-model.add(Dense(50, activation='relu'))
-model.add(Dropout(0.5))
-model.add(Dense(10, activation='relu'))
+model.add(Dense(1000, input_dim=input_dim, activation='relu'))
+model.add(Dropout(0.25))
+model.add(Dense(100, activation='relu'))
+# model.add(Dropout(0.5))
+# model.add(Dense(10, activation='relu'))
 model.add(Dropout(0.01))
 model.add(Dense(1, activation='sigmoid'))
 
@@ -101,7 +113,7 @@ model.compile(loss='binary_crossentropy', optimizer='rmsprop')
 # , metrics=['binary_accuracy']
 
 # print("Training...")
-model.fit(X_train, labels.values, epochs=15, batch_size=64, validation_split=0.15, verbose=2)
+model.fit(X_train, labels.values, epochs=2, batch_size=64, validation_split=0.15, verbose=2)
 
 # print("Generating test predictions...")
 preds = model.predict_proba(X_test, verbose=False)
@@ -115,3 +127,6 @@ print(roc_auc_score(target_test, preds[:, 0]))
 #     pd.DataFrame({"ImageId": list(range(1,len(preds)+1)), "Label": preds}).to_csv(fname, index=False, header=True)
 
 # write_preds(preds, "keras-mlp.csv")
+
+# 0.58445150386
+# ~0.63
