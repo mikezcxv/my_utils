@@ -63,9 +63,21 @@ def get_optimal_params(df, target, oos=.8):
 
 # TODO draft
 # def improved_bayesian():
+#     import xgboost as xgb
+#     from xgboost.sklearn import XGBRegressor
+#     from xgboost import plot_tree
+#     import numpy as np
+#     import matplotlib
+#     import pandas as pd
+#     matplotlib.use('agg')
+#     import matplotlib.pyplot as plt
+#     from sklearn.model_selection import cross_val_score
+#     from bayes_opt import BayesianOptimization
+#
 #     def wrap_cv(min_child_weight, colsample_bytree, max_depth, subsample, gamma, alpha, reg_lambda,
-#                 debug=False, num_folds=6, max_boost_rounds=300, verbose_eval=50, count_extra_run=3,
-#                 train_test_penalize=0.05):
+#                 max_delta_step=0,
+#                 debug=False, num_folds=6, max_boost_rounds=300, verbose_eval=False, count_extra_run=3,
+#                 train_test_penalize=0.05, count_extra_folds=1):
 #         # Data structure in which to save out-of-folds preds
 #         early_stopping_rounds = 30
 #
@@ -76,6 +88,9 @@ def get_optimal_params(df, target, oos=.8):
 #         params['gamma'] = max(gamma, 0)
 #         params['alpha'] = max(alpha, 0)
 #         params['reg_lambda'] = max(reg_lambda, 0)
+#         params['max_delta_step'] = max(max_delta_step, 0)
+#         # 'max_delta_step' : max_delta_step.astype(int),
+#
 #
 #         #     , target_train = tr.ix[:, tr.columns != target], tr.ix[:, target]
 #
@@ -84,11 +99,14 @@ def get_optimal_params(df, target, oos=.8):
 #         iter_cv_result = []
 #         for i in range(count_extra_run):
 #             verb = verbose_eval if i < 2 else None
+#             c_e_f = i % (count_extra_folds + 1) if count_extra_folds else 0
+#
 #             iter_cv_result.append(xgb.cv(dict(params, silent=1, seed=i + 1), dtrain,
 #                                          num_boost_round=max_boost_rounds,
 #                                          early_stopping_rounds=early_stopping_rounds,
 #                                          verbose_eval=verb, show_stdv=False,
-#                                          metrics={'auc'}, stratified=False, nfold=num_folds))
+#                                          metrics={'auc'}, stratified=False,
+#                                          nfold=num_folds + c_e_f))
 #
 #             results['num_rounds'].append(len(iter_cv_result[i]))
 #             t = iter_cv_result[i].iloc[results['num_rounds'][i] - 1, :]
@@ -118,31 +136,48 @@ def get_optimal_params(df, target, oos=.8):
 #
 #         train_val = float(r.loc[r['type'] == 'train-auc-mean']['val'])
 #         test_val = float(r.loc[r['type'] == 'test-auc-mean']['val'])
-#         return test_val - (test_val - train_val) * train_test_penalize
+#         return test_val - (train_val - test_val) * train_test_penalize
 #
-#     dtrain = xgb.DMatrix(df_train, target_train)
+#     df_raw = pd.read_csv('~/Documents/2017/model1/fraud/prod_clean/data/prepared_data_snapshot.csv')
+#     # df_raw.fillna(-1, inplace=True)
 #
-#     # r = wrap_cv(11, 0.7, 3, 0.5, .25, 1, 20,
-#     #         debug=False, num_folds=6, max_boost_rounds=5, verbose_eval=50, count_extra_run=3)
+#     target, pk = 'isfraud', 'applicationid'
+#     oos, l = .8, len(df_raw)
 #
-#     num_rounds = 300
+#     data = df_raw.loc[:, df_raw.columns != target]
+#     y = df_raw.loc[:, target]
+#     # ?do we need transformation
+#     # data = (data - data.mean()) / (data.max() - data.min())
+#
+#     train, labels = data.iloc[:round(l * oos), ], y.iloc[:round(l * oos), ]
+#     test, target_test = data.iloc[round(l * oos):, ], y.iloc[round(l * oos):, ]
+#
+#     dtrain = xgb.DMatrix(train, labels)
+#
+#     num_rounds = 250
 #     random_state = 42
-#     num_iter = 100
-#     init_points = 2
-#     params = {'eta': 0.05, 'silent': 1, 'eval_metric': 'auc', 'verbose_eval': True, 'seed': random_state,
-#               'objective': 'binary:logistic', }
+#     num_iter = 30
+#     # number of initialization points is at least 5, and 10 is even better
+#     # https://www.kaggle.com/c/allstate-claims-severity/discussion/25905
+#     init_points = 7
+#     init_params = {'eta': 0.05, 'silent': 1, 'eval_metric': 'auc', 'verbose_eval': True,
+#                    'seed': random_state, 'objective': 'binary:logistic', 'scale_pos_weight': 7.0}
 #
-#     xgbBO = BayesianOptimization(wrap_cv, {'min_child_weight': (11, 300),
-#                                            'colsample_bytree': (0.7, 0.8),
-#                                            'max_depth': (3, 5),
-#                                            'subsample': (0.45, 0.75),
+#     params = init_params
+#     xgbBO = BayesianOptimization(wrap_cv, {'min_child_weight': (20, 190),
+#                                            'colsample_bytree': (0.15, 0.75),
+#                                            'max_depth': (2, 4),
+#                                            'subsample': (0.45, 0.9),
 #                                            'gamma': (.25, 3),
 #                                            'alpha': (0, 10),
-#                                            'reg_lambda': (50, 150)
+#                                            'reg_lambda': (10, 100),
+#                                            'max_delta_step': (0, 10)
 #                                            })
 #
 #     xgbBO.maximize(init_points=init_points, n_iter=num_iter)
-
+#
+#     # 34 | 01m30s |   68.20050 |   10.0000 |             0.7500 |    3.0000 |      2.1095 |            63.6022 |      24.5430 |      0.4869 |
+#     # 36 | 01m33s |   68.23650 |    6.8881 |             0.7500 |    2.9618 |      3.5842 |           136.5231 |      68.4368 |      0.9000 |
 
 # def draft_bayes_opt():
 #     from bayes_opt import BayesianOptimization
