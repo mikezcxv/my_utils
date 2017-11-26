@@ -7,6 +7,7 @@ from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from model_helper.Transform import *
 import matplotlib
+import gc
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
@@ -197,7 +198,8 @@ def get_ks_stat(df, target, neg_val=0, pos_val=1, max_runs=10000):
     return pd.DataFrame(agg)
 
 
-def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target_name='isfraud'):
+def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target_name='isfraud',
+                        skip_columns=()):
     """
     find_combs(df_prepared2, gain_percent=2, na_threshold=0.95, seed=42)
     """
@@ -211,7 +213,7 @@ def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target
     subs = df.sample(frac=.7, random_state=seed, replace=True)
 
     for c in df.columns.values:
-        if not subs[c].isnull().values.any():
+        if not subs[c].isnull().values.any() and c not in skip_columns:
             a = roc_auc_score(subs[target_name], subs[c])
             # print("%0.3f: %s" % (a, c))
             res[c] = a
@@ -233,8 +235,14 @@ def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target
 
     i = 0
     for x1 in df.columns.values:
+        if x1 in skip_columns:
+            continue
+
         j = 0
         for x2 in df.columns.values:
+            if x2 in skip_columns:
+                continue
+
             if i > j and x1 in res.keys() and x2 in res.keys():
                 for op, fn in functions.items():
                     r = fn(subs[x1], subs[x2])
