@@ -1,5 +1,6 @@
 import math
 import re
+import gc
 import scipy.stats as stats
 import pandas as pd
 import numpy as np
@@ -197,7 +198,8 @@ def get_ks_stat(df, target, neg_val=0, pos_val=1, max_runs=10000):
     return pd.DataFrame(agg)
 
 
-def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target_name='isfraud'):
+def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target_name='isfraud',
+                        skip_columns=()):
     """
     find_combs(df_prepared2, gain_percent=2, na_threshold=0.95, seed=42)
     """
@@ -210,7 +212,10 @@ def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target
     # TODO make more rands with different seeds
     subs = df.sample(frac=.7, random_state=seed, replace=True)
 
-    for c in df.columns.values:
+    check_columns = df.columns.values
+    check_columns = [x for x in check_columns if x not in skip_columns]
+
+    for c in check_columns:
         if not subs[c].isnull().values.any():
             a = roc_auc_score(subs[target_name], subs[c])
             # print("%0.3f: %s" % (a, c))
@@ -232,9 +237,9 @@ def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target
     }
 
     i = 0
-    for x1 in df.columns.values:
+    for x1 in check_columns:
         j = 0
-        for x2 in df.columns.values:
+        for x2 in check_columns:
             if i > j and x1 in res.keys() and x2 in res.keys():
                 for op, fn in functions.items():
                     r = fn(subs[x1], subs[x2])
@@ -442,6 +447,44 @@ def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), o
         df_csv.to_csv('imgs/' + result_prefix + 'top_features_8.csv', index=False)
 
     print("Skipped %d" % count_skip)
+
+
+def floating_auc(df, column_name, target_name, min_section=500):
+    l = len(df)
+    c, target = column_name, target_name
+    split_ranges = np.linspace(0, 1, num=round(l / max(1, min_section)))
+    count_ranges = len(split_ranges) - 1
+    hist = []
+    skip_count = 0
+    for i in range(0, count_ranges):
+        # print("From %.3f to %.3f" % (int(split_ranges[i] * l), int(split_ranges[i + 1] * l)))
+        a = df.iloc[int(split_ranges[i] * l): int(split_ranges[i + 1] * l), :]
+        try:
+            hist.append(roc_auc_score(a.loc[~pd.isnull(a[c])][target], a.loc[~pd.isnull(a[c])][c]))
+        except ValueError:
+            skip_count += 1
+
+    x = range(0, len(hist))
+    plt.plot(range(0, len(hist)), hist)
+    m, b = np.polyfit(x, hist, 1)
+
+    if skip_count:
+        print('Skip: %d' % skip_count)
+
+    if hist:
+        count_na = len(a.loc[~pd.isnull(a[c])])
+        plt.text(0, max(hist) - ((max(hist) - min(hist)) / 80), 'Mean auc: %.4f' % (np.mean(hist)))
+        plt.text(0, max(hist) - ((max(hist) - min(hist)) / 10 + 0.01),
+                 'Count NA: %d [%.2f%%]' % (count_na, (count_na / l) * 100))
+        plt.ylabel('AUC')
+        plt.plot(x, m * x + b, ':')
+        plt.plot(x, [0.5] * len(hist), '--')
+
+        plt.show()
+        plt.clf()
+        plt.hist(hist, bins=30)
+    else:
+        print('Nothing to do..')
 
 
 def find_high_variance(df, min_v=.002, is_print=True, return_scores=False):

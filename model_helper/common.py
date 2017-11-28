@@ -8,6 +8,23 @@ import operator
 # sys.path.append(os.path.expanduser('~/PyProjects/my_utils'))
 # from model_helper.common import *
 
+# TODO create separate helper
+def report_useless_features(model, threshold_useless=3, debug=False):
+    scores = model.get_fscore()
+    list_useless = []
+    almost_useless = []
+    for fn in model.feature_names:
+        if fn not in scores:
+            list_useless.append(fn)
+        elif scores[fn] < threshold_useless:
+            almost_useless.append(fn)
+
+    if debug:
+        print("List useless:", list_useless)
+        print("List almost useless:", almost_useless)
+
+    return list_useless, almost_useless
+
 
 # DF related
 def shape_info(df, msg, prefix='', debug=True):
@@ -82,24 +99,6 @@ def set_if_none(data, field, value):
 
 def sort_dictionary(data, reverse=True):
     return sorted(data.items(), key=operator.itemgetter(1), reverse=reverse)
-
-
-# TODO create separate helper
-def report_useless_features(model, threshold_useless=3, debug=False):
-    scores = model.get_fscore()
-    list_useless = []
-    almost_useless = []
-    for fn in model.feature_names:
-        if fn not in scores:
-            list_useless.append(fn)
-        elif scores[fn] < threshold_useless:
-            almost_useless.append(fn)
-
-    if debug:
-        print("List useless:", list_useless)
-        print("List almost useless:", almost_useless)
-
-    return list_useless, almost_useless
 
 
 # File system helper
