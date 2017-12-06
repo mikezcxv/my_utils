@@ -5,6 +5,10 @@ matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import roc_curve
+import datetime
+from matplotlib.dates import date2num
+from common import *
+
 
 # Target exploration
 # show_count_by_dates, show_bad_rate
@@ -29,6 +33,95 @@ def show_count_by_dates(df, date_column, file_name='bad_rate.png', folder_path='
     plt.clf()
 
 
+def show_count_by_dates_gen2(df, date_column, pk, file_name='bad_rate.png', folder_path='imgs',
+                             plt_title='', fig_size=(10, 8), inline=False, debug=False):
+    df_date = pd.DataFrame(columns=['date'])
+    df_date['date'] = df[date_column]
+    df_date['date'] = df_date['date'].astype("datetime64")
+    df_date[pk] = df[pk]
+
+    data = []
+    for d in split_by_months(df_date, 'date', pk).iterrows():
+        _date, _from, _to, _count = d[0], [1][0], d[1][1], d[1][2]
+        dt = datetime.datetime(_date[0], _date[1], 1, 0, 0)
+        data.append((dt, _count))
+
+        if debug:
+            print(_date, _from, _to, _count)
+
+    fig = plt.figure(figsize=fig_size)
+    plt.ylabel('Count')
+    plt.xlabel('Dates')
+
+    graph = fig.add_subplot(111)
+    x = [date2num(date) for (date, value) in data]
+    y = [value for (date, value) in data]
+    graph.bar(x, y)
+    graph.set_xticks(x)
+    graph.set_xticklabels([date.strftime("%Y-%m") for (date, value) in data])
+
+    plt.legend(loc="upper right")
+    plt.title(plt_title)
+    plt.show()
+
+    if inline:
+        plt.show()
+    else:
+        plt.savefig(folder_path + '/' + file_name)
+
+    plt.clf()
+
+
+def compare_auc(df, target_column, columns, file_name='new_comparision',
+                title='Scores performance comparision'):
+    fpr, tpr, _auc = [], [], []
+
+    i = 0
+    for c in columns:
+        f, t, _ = roc_curve(1 - df[target_column], df[c])
+        fpr.append(f), tpr.append(t)
+        _auc.append(round(roc_auc_score(1 - df[target_column], df[c]), 4))
+
+    plt.figure(figsize=(8, 8))
+    ax = plt.subplot()
+    #     ax.set_facecolor("white")
+
+    i = 0
+    for c in columns:
+        plt.plot(fpr[i], tpr[i], label=c + ' (area = %0.4f)' % _auc[i])
+        i += 1
+
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title(title)
+    plt.legend(loc="lower right")
+    plt.savefig(file_name + '.png')
+    plt.show()
+    plt.clf()
+
+
+def floating_bad_rate(df, x_column, y_column, _from, _to, count_points=100, min_in_group=30):
+    fl = np.linspace(_from, _to, num=count_points)
+
+    points_x = []
+    points_y = []
+    for a in fl:
+        s = df.loc[(df[x_column] < a) & (df[x_column] > a - 3 * (_to - _from) / count_points)]
+        l = len(s)
+        if l & (l > min_in_group):
+            bad_rate = s[y_column].sum() / l
+            points_x.append(a)
+            points_y.append(bad_rate)
+            print(round(a, 4), l, round(bad_rate, 4))
+
+    plt.plot(points_x, points_y)
+    plt.show()
+    plt.clf()
+
+
 def show_bad_rate(df, date_column, target_name, file_name='bad_rate.png', folder_path='imgs',
                   sens=32, fig_size=(16, 9), inline=False):
 
@@ -47,6 +140,12 @@ def show_bad_rate(df, date_column, target_name, file_name='bad_rate.png', folder
         plt.savefig(folder_path + '/' + file_name)
 
     plt.clf()
+
+
+def show_target_info(df, target_c):
+    l = len(df)
+    count_bad = df[target_c].sum()
+    print('Total: %d, bad: %d, bad rate: %.4f' % (l, count_bad, count_bad / l))
 
 
 def show_heat_map(df, file_name, folder_path='imgs', width=24, height=11, inline=False, method='pearson'):
@@ -203,6 +302,116 @@ def draw_roc_curve(y_pred, target_test, file_name, folder_path, avg_auc_num, inl
         plt.savefig(folder_path + '/' + file_name)
 
     plt.clf()
+
+
+def floating_auc(df, column_name, target_name, min_section=500):
+    l = len(df)
+    c, target = column_name, target_name
+    split_ranges = np.linspace(0, 1, num=round(l / max(1, min_section)))
+    count_ranges = len(split_ranges) - 1
+    hist = []
+    skip_count = 0
+    for i in range(0, count_ranges):
+        # print("From %.3f to %.3f" % (int(split_ranges[i] * l), int(split_ranges[i + 1] * l)))
+        a = df.iloc[int(split_ranges[i] * l): int(split_ranges[i + 1] * l), :]
+        try:
+            hist.append(roc_auc_score(a.loc[~pd.isnull(a[c])][target], a.loc[~pd.isnull(a[c])][c]))
+        except ValueError:
+            skip_count += 1
+
+    x = range(0, len(hist))
+    plt.plot(range(0, len(hist)), hist)
+    m, b = np.polyfit(x, hist, 1)
+
+    if skip_count:
+        print('Skip: %d' % skip_count)
+
+    if hist:
+        count_na = len(df.loc[pd.isnull(df[c])])
+        plt.text(0, max(hist) - ((max(hist) - min(hist)) / 80), 'Mean auc: %.4f' % (np.mean(hist)))
+        plt.text(0, max(hist) - ((max(hist) - min(hist)) / 10 + 0.01),
+                 'Count NA: %d [%.2f%%]' % (count_na, (count_na / l) * 100))
+        plt.ylabel('AUC')
+        plt.plot(x, m * x + b, ':')
+        plt.plot(x, [0.5] * len(hist), '--')
+
+        plt.show()
+        plt.clf()
+        plt.hist(hist, bins=30)
+    else:
+        print('Nothing to do..')
+
+
+def floating_auc_by_dates(df, columns, target_name, date_column, pk,
+                          plt_title='', debug=False):
+    """
+    floating_auc_by_dates(df_cleaned_vs_date, ['zibby_score', 'CSFraud_Score', 'FICECLV9_SCORE', 'FICO_plus_zibbi'],
+                      'SecondPaymentDelinquencyClass_r', 'created_at', 'id',
+                      'AUC for different periods', True)
+    """
+    l = len(df)
+    target = target_name
+
+    min_in_month, skip_count = 30, 0
+    hist = []
+    dates = []
+    data = {}
+    for d in split_by_months(df, date_column, pk).iterrows():
+        _date, _from, _to, _count = d[0], [1][0], d[1][1], d[1][2]
+        if _count < min_in_month:
+            if debug:
+                print('Skip month ', _date, 'with %d' % _count)
+            skip_count += 1
+            continue
+
+        if debug:
+            print(d[0], '---', d[1][0], d[1][1], d[1][2])
+
+        a = df.where((df[pk] >= _from) & (df[pk] <= _to))
+
+        try:
+            dt = datetime.datetime(_date[0], _date[1], 1, 0, 0)
+            # hist.append(sc), dates.append(dt)
+            for c in columns:
+                sc = roc_auc_score(a.loc[~pd.isnull(a[c])][target], a.loc[~pd.isnull(a[c])][c])
+                if c in data:
+                    data[c].append((dt, sc))
+                else:
+                    data[c] = [(dt, sc)]
+
+        except ValueError:
+            skip_count += 1
+
+    count_ranges = len(hist)
+
+    #     x = range(0, len(hist))
+    #     plt.plot(range(0, len(hist)), hist)
+    #     m, b = np.polyfit(x, hist, 1)
+
+    if skip_count:
+        print('Skip: %d' % skip_count)
+
+    if data:
+        fig = plt.figure(figsize=(10, 8))
+        plt.ylabel('AUC')
+        plt.xlabel('Dates')
+
+        graph = fig.add_subplot(111)
+        i = 0
+        for k, v in data.items():
+            x = [date2num(date) for (date, value) in v]
+            y = [value for (date, value) in v]
+            graph.plot(x, y, '-o', label=k)
+            if i == 0:
+                graph.set_xticks(x)
+                graph.set_xticklabels([date.strftime("%Y-%m") for (date, value) in v])
+
+        plt.legend(loc="upper right")
+        plt.title(plt_title)
+        plt.show()
+
+    else:
+        print('Nothing to do..')
 
 
 # TODO check

@@ -8,6 +8,19 @@ import operator
 # sys.path.append(os.path.expanduser('~/PyProjects/my_utils'))
 # from model_helper.common import *
 
+def split_by_months(df, date_column, range_column=None):
+    """
+    The way to use it
+    for d in split_by_months(df_cleaned_vs_date, 'created_at', 'id').iterrows():
+        print(d[0], '---', d[1][0], d[1][1], d[1][2])
+    """
+    if not range_column:
+        range_column = date_column
+
+    return df[range_column].groupby([df[date_column].dt.year, df[date_column].dt.month]) \
+        .agg(['min', 'max', 'count'])
+
+
 # TODO create separate helper
 def report_useless_features(model, threshold_useless=3, debug=False):
     scores = model.get_fscore()

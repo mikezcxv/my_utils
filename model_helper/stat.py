@@ -449,44 +449,6 @@ def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), o
     print("Skipped %d" % count_skip)
 
 
-def floating_auc(df, column_name, target_name, min_section=500):
-    l = len(df)
-    c, target = column_name, target_name
-    split_ranges = np.linspace(0, 1, num=round(l / max(1, min_section)))
-    count_ranges = len(split_ranges) - 1
-    hist = []
-    skip_count = 0
-    for i in range(0, count_ranges):
-        # print("From %.3f to %.3f" % (int(split_ranges[i] * l), int(split_ranges[i + 1] * l)))
-        a = df.iloc[int(split_ranges[i] * l): int(split_ranges[i + 1] * l), :]
-        try:
-            hist.append(roc_auc_score(a.loc[~pd.isnull(a[c])][target], a.loc[~pd.isnull(a[c])][c]))
-        except ValueError:
-            skip_count += 1
-
-    x = range(0, len(hist))
-    plt.plot(range(0, len(hist)), hist)
-    m, b = np.polyfit(x, hist, 1)
-
-    if skip_count:
-        print('Skip: %d' % skip_count)
-
-    if hist:
-        count_na = len(a.loc[~pd.isnull(a[c])])
-        plt.text(0, max(hist) - ((max(hist) - min(hist)) / 80), 'Mean auc: %.4f' % (np.mean(hist)))
-        plt.text(0, max(hist) - ((max(hist) - min(hist)) / 10 + 0.01),
-                 'Count NA: %d [%.2f%%]' % (count_na, (count_na / l) * 100))
-        plt.ylabel('AUC')
-        plt.plot(x, m * x + b, ':')
-        plt.plot(x, [0.5] * len(hist), '--')
-
-        plt.show()
-        plt.clf()
-        plt.hist(hist, bins=30)
-    else:
-        print('Nothing to do..')
-
-
 def find_high_variance(df, min_v=.002, is_print=True, return_scores=False):
     res = list()
     res2 = {}
@@ -532,3 +494,32 @@ def explore_var(df, name):
         plt.show()
 
     print()
+
+
+def find_correlated(df, column_name, threshold=0.5):
+    """
+    Find all columns that are highly correlated to the given
+    :param df:
+    :param column_name:
+    :param threshold:
+    :return:
+
+    """
+    for c in df:
+        if df[c].dtype == 'object':
+            continue
+
+        sub_df = df.loc[~pd.isnull(df[c]) & ~pd.isnull(df[column_name])][[c, column_name]]
+
+        # ?
+        # if len(sub_df) < 100:
+        #     continue
+
+        try:
+            corr = stats.pearsonr(sub_df[c], sub_df[column_name])
+        except ValueError:
+            print('Error with ', c)
+
+        if abs(corr[0]) > threshold:
+            print(c, corr, 'NA:', len(df) - len(sub_df))
+
