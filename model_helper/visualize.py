@@ -42,7 +42,7 @@ def show_count_by_dates_gen2(df, date_column, pk, file_name='bad_rate.png', fold
 
     data = []
     for d in split_by_months(df_date, 'date', pk).iterrows():
-        _date, _from, _to, _count = d[0], [1][0], d[1][1], d[1][2]
+        _date, _from, _to, _count = d[0], d[1][0], d[1][1], d[1][2]
         dt = datetime.datetime(_date[0], _date[1], 1, 0, 0)
         data.append((dt, _count))
 
@@ -357,7 +357,7 @@ def floating_auc_by_dates(df, columns, target_name, date_column, pk,
     dates = []
     data = {}
     for d in split_by_months(df, date_column, pk).iterrows():
-        _date, _from, _to, _count = d[0], [1][0], d[1][1], d[1][2]
+        _date, _from, _to, _count = d[0], d[1][0], d[1][1], d[1][2]
         if _count < min_in_month:
             if debug:
                 print('Skip month ', _date, 'with %d' % _count)
