@@ -7,7 +7,7 @@ import seaborn as sns
 from sklearn.metrics import roc_curve
 import datetime
 from matplotlib.dates import date2num
-from common import *
+from model_helper.common import *
 
 
 # Target exploration
