@@ -202,14 +202,15 @@ class RunXGB:
             fig, ax = plt.subplots(1, 1, figsize=(8, 16))
             xgb.plot_importance(model, height=0.5, ax=ax)
             plt.show()
+            plt.tight_layout()
             plt.savefig('imgs/' + files_prefix + 'features.png')
 
         y_pred = model.predict(self.dtest)
-        _acc = accuracy_score(self.target_test, np.round(y_pred))
+        # _acc = accuracy_score(self.target_test, np.round(y_pred))
         _roc = roc_auc_score(self.target_test, y_pred)
 
         if count_extra_run:
-            rocs = []
+            rocs = [_roc]
             for i in tqdm(range(count_extra_run)):
                 extra_model = xgb.train(dict(params, seed=i + 1), self.dtrain, num_boost_round=num_boost_round)
                 extra_y_pred = extra_model.predict(self.dtest)
@@ -223,7 +224,8 @@ class RunXGB:
             draw_roc_curve(y_pred, self.target_test, files_prefix + '_auc.png', 'imgs', _roc)
 
         # print("Accuracy on hold-out: %.2f" % _acc)
-        print("Roc on test: %.2f (one run)" % (_roc * 10))
+        if count_extra_run is None:
+            print("Roc on test: %.2f (one run)" % (_roc * 100))
 
         result = pd.DataFrame({'id': self.id_test, self.target: y_pred, 'realVal': self.target_test})
 

@@ -34,7 +34,8 @@ def show_count_by_dates(df, date_column, file_name='bad_rate.png', folder_path='
 
 
 def show_count_by_dates_gen2(df, date_column, pk, file_name='bad_rate.png', folder_path='imgs',
-                             plt_title='', fig_size=(10, 8), inline=False, debug=False):
+                             plt_title='', fig_size=(10, 8), inline=False, debug=False,
+                             xticks_position='horizontal'):
     df_date = pd.DataFrame(columns=['date'])
     df_date['date'] = df[date_column]
     df_date['date'] = df_date['date'].astype("datetime64")
@@ -50,16 +51,17 @@ def show_count_by_dates_gen2(df, date_column, pk, file_name='bad_rate.png', fold
             print(_date, _from, _to, _count)
 
     fig = plt.figure(figsize=fig_size)
-    plt.ylabel('Count')
-    plt.xlabel('Dates')
+    plt.ylabel('count')
+    plt.xlabel('dates')
 
     graph = fig.add_subplot(111)
     x = [date2num(date) for (date, value) in data]
     y = [value for (date, value) in data]
-    graph.bar(x, y)
+    graph.bar(x, y, width=17)
     graph.set_xticks(x)
-    graph.set_xticklabels([date.strftime("%Y-%m") for (date, value) in data])
+    graph.set_xticklabels([date.strftime("%Y-%m") for (date, value) in data],)
 
+    plt.xticks(rotation=xticks_position)
     plt.legend(loc="upper right")
     plt.title(plt_title)
     plt.show()
@@ -339,6 +341,7 @@ def floating_auc(df, column_name, target_name, min_section=500):
         plt.show()
         plt.clf()
         plt.hist(hist, bins=30)
+        plt.clf()
     else:
         print('Nothing to do..')
 
