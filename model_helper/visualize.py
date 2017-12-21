@@ -332,6 +332,7 @@ def floating_auc(df, column_name, target_name, min_section=500):
         plt.text(0, max(hist) - ((max(hist) - min(hist)) / 10 + 0.01),
                  'Count NA: %d [%.2f%%]' % (count_na, (count_na / l) * 100))
         plt.ylabel('AUC')
+        plt.xlabel(column_name)
         plt.plot(x, m * x + b, ':')
         plt.plot(x, [0.5] * len(hist), '--')
 
