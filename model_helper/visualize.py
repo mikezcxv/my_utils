@@ -4,7 +4,7 @@ import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.metrics import roc_curve
+from sklearn.metrics import roc_curve, roc_auc_score
 import datetime
 from matplotlib.dates import date2num
 from model_helper.common import *
