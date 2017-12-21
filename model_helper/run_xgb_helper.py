@@ -223,7 +223,7 @@ class RunXGB:
             draw_roc_curve(y_pred, self.target_test, files_prefix + '_auc.png', 'imgs', _roc)
 
         # print("Accuracy on hold-out: %.2f" % _acc)
-        print("Roc on hold-out: %.2f (one run)" % _roc * 10)
+        print("Roc on test: %.2f (one run)" % (_roc * 10))
 
         result = pd.DataFrame({'id': self.id_test, self.target: y_pred, 'realVal': self.target_test})
 
