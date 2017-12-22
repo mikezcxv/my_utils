@@ -16,7 +16,7 @@ from model_helper.common import *
 # Features exploration
 # show_heat_map, show_hist_by_periods, explore_categorical_to_binary_target
 
-
+# deprecated
 def show_count_by_dates(df, date_column, file_name='bad_rate.png', folder_path='imgs', fig_size=(16, 9),
                         inline=False):
     df_date = pd.DataFrame(columns=['date'])
@@ -64,7 +64,7 @@ def show_count_by_dates_gen2(df, date_column, pk, file_name='bad_rate.png', fold
     plt.xticks(rotation=xticks_position)
     plt.legend(loc="upper right")
     plt.title(plt_title)
-    plt.show()
+    # graph.set_facecolor("white")
 
     if inline:
         plt.show()
@@ -124,17 +124,54 @@ def floating_bad_rate(df, x_column, y_column, _from, _to, count_points=100, min_
     plt.clf()
 
 
-def show_bad_rate(df, date_column, target_name, file_name='bad_rate.png', folder_path='imgs',
-                  sens=32, fig_size=(16, 9), inline=False):
+# def show_bad_rate(df, date_column, target_name, file_name='bad_rate.png', folder_path='imgs',
+#                   sens=32, fig_size=(16, 9), inline=False):
+#
+#     df_date = df[[date_column, target_name]]
+#     df_date[date_column] = df_date[date_column].astype("datetime64")
+#     df_date['dm'] = df_date[date_column].apply(lambda x: x.year * 1000 + x.month * 10 + int(x.day / sens))
+#
+#     plt.clf()
+#     plt.subplots(figsize=(fig_size[0], fig_size[1]))
+#     sns.barplot(x='dm', y=target_name, data=df_date)
+#     # axes[ax_x, ax_y].set_title('Period: ' + str(p))
+#
+#     if inline:
+#         plt.show()
+#     else:
+#         plt.savefig(folder_path + '/' + file_name)
+#
+#     plt.clf()
 
+
+def show_bad_rate(df, date_column, target_name, file_name='bad_rate.png', folder_path='imgs',
+                  sens=32, fig_size=(16, 9), inline=False,
+                  xticks_position='vertical', plt_title='Target rate', debug=False, pk='id'):
     df_date = df[[date_column, target_name]]
     df_date[date_column] = df_date[date_column].astype("datetime64")
-    df_date['dm'] = df_date[date_column].apply(lambda x: x.year * 1000 + x.month * 10 + int(x.day / sens))
+    df_date['date'] = df_date[date_column].apply(lambda x: x.year * 1000 + x.month * 10 + int(x.day / sens))
 
-    plt.clf()
+    df_date['date_inner'] = df[date_column]
+    df_date['date_inner'] = df_date['date_inner'].astype("datetime64")
+    df_date[pk] = df[pk]
+
+    data = []
+    for d in split_by_months(df_date, 'date_inner', pk).iterrows():
+        _date, _from, _to, _count = d[0], d[1][0], d[1][1], d[1][2]
+        dt = datetime.datetime(_date[0], _date[1], 1, 0, 0)
+        data.append((dt, _count))
+        count_bad = df.loc[(df[pk] >= _from) & (df[pk] <= _to), target_name].sum()
+
+        if debug:
+            print(_date, _from, _to, _count, round(count_bad / _count, 4))
+
     plt.subplots(figsize=(fig_size[0], fig_size[1]))
-    sns.barplot(x='dm', y=target_name, data=df_date)
-    # axes[ax_x, ax_y].set_title('Period: ' + str(p))
+    graph = sns.barplot(x='date', y=target_name, data=df_date)
+    graph.set_xticklabels([date.strftime("%Y-%m") for (date, value) in data], )
+
+    plt.xticks(rotation=xticks_position)
+    plt.legend(loc="upper right")
+    plt.title(plt_title)
 
     if inline:
         plt.show()
