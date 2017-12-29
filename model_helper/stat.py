@@ -523,3 +523,31 @@ def find_correlated(df, column_name, threshold=0.5):
         if abs(corr[0]) > threshold:
             print(c, corr, 'NA:', len(df) - len(sub_df))
 
+
+def cramers_corrected_stat(row1, row2):
+    """ calculate Cramers V statistic for categorial-categorial association.
+        uses correction from Bergsma and Wicher,
+        Journal of the Korean Statistical Society 42 (2013): 323-328
+    """
+    try:
+        confusion_matrix = pd.crosstab(row1, row2)
+    except TypeError:
+        return None
+
+    if len(confusion_matrix) == 0:
+        return None
+
+    chi2 = stats.chi2_contingency(confusion_matrix)[0]
+    n = confusion_matrix.sum().sum()
+
+    if n == 1:
+        return None
+
+    phi2 = chi2 / n
+    r, k = confusion_matrix.shape
+    phi2corr = max(0, phi2 - ((k - 1) * (r - 1)) / (n - 1))
+    rcorr = r - ((r - 1) ** 2) / (n - 1)
+    kcorr = k - ((k - 1) ** 2) / (n - 1)
+    d = min((kcorr - 1), (rcorr - 1))
+    return np.sqrt(phi2corr / d) if d > 0 else None
+
