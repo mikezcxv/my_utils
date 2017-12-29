@@ -20,6 +20,7 @@ from model_helper.visualize import *
 import random
 import pickle
 from tqdm import tqdm
+import xgbfir
 
 
 def split_into_folds(df, target, random_state=42):
@@ -176,7 +177,7 @@ class RunXGB:
 
     #  TODO compare!
     def go(self, num_boost_round, show_graph=True, threshold_useless=3, files_prefix='', debug=True, show_auc=True,
-               count_extra_run=None):
+               count_extra_run=None, save_features_info=True):
         params = dict(self.xgb_params, silent=1)
         model = xgb.train(params, self.dtrain, num_boost_round=num_boost_round)
         files_prefix = '_' + files_prefix
@@ -206,6 +207,10 @@ class RunXGB:
             plt.savefig('imgs/' + files_prefix + 'features.png')
 
         y_pred = model.predict(self.dtest)
+
+        if save_features_info:
+            xgbfir.saveXgbFI(model, OutputXlsxFile='data/' + files_prefix + '_features_info.xlsx')
+
         # _acc = accuracy_score(self.target_test, np.round(y_pred))
         _roc = roc_auc_score(self.target_test, y_pred)
 
