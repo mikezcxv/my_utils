@@ -1,3 +1,4 @@
+import math
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -230,6 +231,9 @@ def show_hist_by_periods(df, column_name, target_name, date_name, periods=\
     plt_hist_by_periods(df_mix, cn=c, avg_bad_rate=.124, bins=[0, 0.2, 0.5, 0.8, 1, 1.5, 2, 3], debug=False)
     """
     df_copy = df[[date_name, target_name, column_name]].copy()
+    if not re.search('date', str(df_copy[date_name].dtype)):
+        df_copy[date_name] = df_copy[date_name].astype("datetime64")
+
     df_copy['ym'] = df_copy[date_name].apply(lambda x: x.year * 1000 + x.month)
 
     # df_raw[['circulodecredito_sameaddressapplicantcount', 'dm', 'isfraud']].groupby('dm').agg(['count', 'mean'])
@@ -292,6 +296,58 @@ def show_hist_by_periods(df, column_name, target_name, date_name, periods=\
     # g.map(plt.hist, "isfraud", cn);
 
 
+def compare_distributions(df, split_size, column_name, labels=['Time frame #1', 'Time frame #2'],
+                          folder_save='imgs', inline=False):
+    a = df.iloc[:math.ceil(len(df) * split_size), :][[column_name]]
+    b = df.iloc[math.ceil(len(df) * split_size):, :][[column_name]]
+
+    a = a.loc[~pd.isnull(a[column_name])][column_name]
+    b = b.loc[~pd.isnull(b[column_name])][column_name]
+
+    plt.hist([a, b], alpha=0.7, label=labels)
+
+    plt.ylabel('count')
+    plt.legend(loc='upper right')
+    plt.title(column_name)
+    if inline:
+        plt.show()
+    else:
+        plt.savefig(folder_save + '/info_' + column_name + '_count.png')
+
+    plt.clf()
+
+    fig, ax = plt.subplots()
+    ax.hist(a, 30, histtype='step', alpha=0.8, normed=True, label=labels[0])
+    ax.hist(b, 30, histtype='step', alpha=0.8, normed=True, label=labels[1])
+    ax.legend(loc='upper left')
+    plt.ylabel('density')
+    plt.title(column_name)
+    if inline:
+        plt.show()
+    else:
+        plt.savefig(folder_save + '/info_' + column_name + '_density.png')
+
+    plt.clf()
+
+    fig, ax = plt.subplots(nrows=1, ncols=1)
+
+    ax.boxplot([a, b], vert=True, patch_artist=False)
+
+    # adding horizontal grid lines
+    ax.yaxis.grid(True)
+    ax.set_xticks([y + 1 for y in range(len([a, b]))], )
+    ax.set_ylabel(column_name)
+    plt.title(column_name)
+
+    plt.setp(ax, xticks=[y + 1 for y in range(len([a, b]))], xticklabels=labels)
+    if inline:
+        plt.show()
+    else:
+        plt.savefig(folder_save + '/info_' + column_name + '_boxplot.png')
+
+    plt.clf()
+
+
 def show_binary_hist(df, column_name, target_name, file_name, folder_path, inline=False):
     _df = df.copy()
     _df = _df[~pd.isnull(_df[column_name])]
@@ -318,6 +374,25 @@ def draw_distributions(result, target_column, file_name, folder_path, inline=Fal
         plt.show()
     else:
         plt.savefig(folder_path + '/' + file_name)
+
+    plt.clf()
+
+
+def draw_distributions_gen2(result, target_column, file_name, folder_path, inline=False, title=None,
+                      cumulative=False, normed=1):
+    plt.clf()
+    plt.hist(result.loc[result.realVal == 1, target_column], 100, label='Bad', color="red",
+            normed=normed, histtype='step', cumulative=cumulative)
+    plt.hist(result.loc[result.realVal == 0, target_column], 100, label='Good',
+             normed=normed, histtype='step',cumulative=cumulative)
+    plt.legend(loc='upper right')
+    plt.ylabel('Density' if not cumulative else '')
+    plt.title(title)
+
+    if inline:
+        plt.show()
+    else:
+        plt.savefig(folder_path + '/' + ('density_' if not cumulative else '') + file_name)
 
     plt.clf()
 
@@ -483,3 +558,159 @@ def plot_one_xgboost_tree():
     fig.set_figwidth(30)
     fig.set_figheight(30)
     plt.show()
+
+
+# Draft
+# from sklearn.metrics import accuracy_score
+#
+#
+# def calc_cumulative_gains(df: pd.DataFrame, actual_col: str, predicted_col: str, probability_col: str):
+#     df.sort_values(by=probability_col, ascending=False, inplace=True)
+#
+#     subset = df[df[predicted_col] == True]
+#
+#     rows = []
+#     for group in np.array_split(subset, 10):
+#         score = accuracy_score(group[actual_col].tolist(),
+#                                group[predicted_col].tolist(),
+#                                normalize=False)
+#
+#         rows.append({'NumCases': len(group), 'NumCorrectPredictions': score})
+#
+#     lift = pd.DataFrame(rows)
+#
+#     # Cumulative Gains Calculation
+#     lift['RunningCorrect'] = lift['NumCorrectPredictions'].cumsum()
+#     lift['PercentCorrect'] = lift.apply(
+#         lambda x: (100 / (lift['NumCorrectPredictions'].sum() + 0.00001)) * x['RunningCorrect'], axis=1)
+#     lift['CumulativeCorrectBestCase'] = lift['NumCases'].cumsum()
+#     lift['PercentCorrectBestCase'] = lift['CumulativeCorrectBestCase'].apply(
+#         lambda x: 100 if (100 / (lift['NumCorrectPredictions'].sum() + 0.00001)) * x > 100 else (100 / (lift[
+#                                                                                                             'NumCorrectPredictions'].sum() + 1)) * x)
+#     lift['AvgCase'] = lift['NumCorrectPredictions'].sum() / len(lift)
+#     lift['CumulativeAvgCase'] = lift['AvgCase'].cumsum()
+#     lift['PercentAvgCase'] = lift['CumulativeAvgCase'].apply(
+#         lambda x: (100 / (lift['NumCorrectPredictions'].sum() + 0.0001) * x))
+#
+#     # Lift Chart
+#     lift['NormalisedPercentAvg'] = 1
+#     lift['NormalisedPercentWithModel'] = lift['PercentCorrect'] / lift['PercentAvgCase']
+#
+#     return lift
+#
+#
+# def plot_cumulative_gains(lift: pd.DataFrame):
+#     fig, ax = plt.subplots()
+#     fig.canvas.draw()
+#
+#     handles = []
+#     handles.append(ax.plot(lift['PercentCorrect'], 'r-', label='Percent Correct Predictions'))
+#     handles.append(ax.plot(lift['PercentCorrectBestCase'], 'g-', label='Best Case (for current model)'))
+#     handles.append(ax.plot(lift['PercentAvgCase'], 'b-', label='Average Case (for current model)'))
+#     ax.set_xlabel('Total Population (%)')
+#     ax.set_ylabel('Number of Respondents (%)')
+#
+#     ax.set_xlim([0, 9])
+#     ax.set_ylim([10, 100])
+#
+#     labels = [int((label + 1) * 10) for label in [float(item.get_text()) for item in ax.get_xticklabels()]]
+#
+#     ax.set_xticklabels(labels)
+#
+#     fig.legend(handles, labels=[h[0].get_label() for h in handles])
+#     fig.show()
+#
+#
+# def plot_lift_chart(lift: pd.DataFrame):
+#     plt.figure()
+#     plt.plot(lift['NormalisedPercentAvg'], 'r-', label='Normalised \'response rate\' with no model')
+#     plt.plot(lift['NormalisedPercentWithModel'], 'g-', label='Normalised \'response rate\' with using model')
+#     plt.legend()
+#     plt.show()
+#
+#
+# plot_cumulative_gains(calc_cumulative_gains(oot, 'realVal', target, target))
+
+# TODO Draft calibration plot
+# from sklearn.naive_bayes import GaussianNB
+# from sklearn.svm import LinearSVC
+# from sklearn.linear_model import LogisticRegression
+# from sklearn.metrics import (brier_score_loss, precision_score, recall_score,
+#                              f1_score)
+# from sklearn.calibration import CalibratedClassifierCV, calibration_curve
+# from sklearn.model_selection import train_test_split
+#
+#
+# # Create dataset of classification task with many redundant and few
+# # informative features
+# X, y = datasets.make_classification(n_samples=100000, n_features=20,
+#                                     n_informative=2, n_redundant=10,
+#                                     random_state=42)
+#
+# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.99,
+#                                                     random_state=42)
+#
+#
+# def plot_calibration_curve(est, name, fig_index):
+#     """Plot calibration curve for est w/o and with calibration. """
+#     # Calibrated with isotonic calibration
+#     isotonic = CalibratedClassifierCV(est, cv=2, method='isotonic')
+#
+#     # Calibrated with sigmoid calibration
+#     sigmoid = CalibratedClassifierCV(est, cv=2, method='sigmoid')
+#
+#     # Logistic regression with no calibration as baseline
+#     lr = LogisticRegression(C=1., solver='lbfgs')
+#
+#     fig = plt.figure(fig_index, figsize=(10, 10))
+#     ax1 = plt.subplot2grid((3, 1), (0, 0), rowspan=2)
+#     ax2 = plt.subplot2grid((3, 1), (2, 0))
+#
+#     ax1.plot([0, 1], [0, 1], "k:", label="Perfectly calibrated")
+#     for clf, name in [(lr, 'Logistic'),
+#                       (est, name),
+#                       (isotonic, name + ' + Isotonic'),
+#                       (sigmoid, name + ' + Sigmoid')]:
+#         clf.fit(X_train, y_train)
+#         y_pred = clf.predict(X_test)
+#         if hasattr(clf, "predict_proba"):
+#             prob_pos = clf.predict_proba(X_test)[:, 1]
+#         else:  # use decision function
+#             prob_pos = clf.decision_function(X_test)
+#             prob_pos = \
+#                 (prob_pos - prob_pos.min()) / (prob_pos.max() - prob_pos.min())
+#
+#         clf_score = brier_score_loss(y_test, prob_pos, pos_label=y.max())
+#         print("%s:" % name)
+#         print("\tBrier: %1.3f" % (clf_score))
+#         print("\tPrecision: %1.3f" % precision_score(y_test, y_pred))
+#         print("\tRecall: %1.3f" % recall_score(y_test, y_pred))
+#         print("\tF1: %1.3f\n" % f1_score(y_test, y_pred))
+#
+#         fraction_of_positives, mean_predicted_value = \
+#             calibration_curve(y_test, prob_pos, n_bins=10)
+#
+#         ax1.plot(mean_predicted_value, fraction_of_positives, "s-",
+#                  label="%s (%1.3f)" % (name, clf_score))
+#
+#         ax2.hist(prob_pos, range=(0, 1), bins=10, label=name,
+#                  histtype="step", lw=2)
+#
+#     ax1.set_ylabel("Fraction of positives")
+#     ax1.set_ylim([-0.05, 1.05])
+#     ax1.legend(loc="lower right")
+#     ax1.set_title('Calibration plots  (reliability curve)')
+#
+#     ax2.set_xlabel("Mean predicted value")
+#     ax2.set_ylabel("Count")
+#     ax2.legend(loc="upper center", ncol=2)
+#
+#     plt.tight_layout()
+#
+# # Plot calibration curve for Gaussian Naive Bayes
+# plot_calibration_curve(GaussianNB(), "Naive Bayes", 1)
+#
+# # Plot calibration curve for Linear SVC
+# plot_calibration_curve(LinearSVC(), "SVC", 2)
+#
+# plt.show()
