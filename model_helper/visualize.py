@@ -219,12 +219,12 @@ def explore_categorical_to_binary_target(df, column_name, target_name, folder_pa
     plt.clf()
 
 
-def show_hist_by_periods(df, column_name, target_name, date_name, periods=\
+def show_hist_by_periods(df, column_name, target_name, date_name, periods= \
         [2016009, 2016010, 2016011, 2016012, 2017001, 2017002, 2017003],
-                        bins=np.linspace(1000, 2600, num=5), avg_bad_rate=.13,
-                        file_prefix='by_periods_',
-                        folder_path='img_features',
-                        debug=False, inline=False):
+                         bins=np.linspace(1000, 2600, num=5), avg_bad_rate=.13,
+                         file_prefix='by_periods_',
+                         folder_path='img_features',
+                         debug=False, inline=False):
     """
     Examples of usage:
     plt_hist_by_periods(df_raw, cn=c, avg_bad_rate=.124, bins=np.linspace(0, 6, num=4), debug=False)
@@ -245,7 +245,8 @@ def show_hist_by_periods(df, column_name, target_name, date_name, periods=\
     # ax[1].set_title('hist = hist / hist.sum()')
 
     plt.clf()
-    fig, axes = plt.subplots(nrows=4, ncols=2, figsize=(12, 18))
+    fig, axes = plt.subplots(nrows=math.ceil(len(periods) / 2), ncols=2,
+                             figsize=(12, math.ceil(math.ceil(len(periods) / 2) * 4.5)))
 
     # [1000, 0.1, 0.2, 0.3, 0.5, 0.6, 0.8, 1, 1.5, 2, 3, 4]
     # weights = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -294,6 +295,76 @@ def show_hist_by_periods(df, column_name, target_name, date_name, periods=\
 
     # g = sns.FacetGrid(df_raw[['dm', 'isfraud', cn]], col="dm", size=4, aspect=.5)
     # g.map(plt.hist, "isfraud", cn);
+
+
+def show_hist_by_periods_gen2(df, c, target, date_column, periods= \
+        [2016009, 2016010, 2016011, 2016012, 2017001, 2017002, 2017003], \
+                              num_bins=5, file_prefix='by_periods_', folder_path='img_features', debug=False,
+                              inline=False):
+    _min, _max = np.min(df[c]), np.max(df[c])
+    bad_rate = round(df[target].sum() / len(df), 3)
+    bins = np.linspace(_min, _max, num=num_bins)
+    show_hist_by_periods(df, c, target, date_column, periods=periods, bins=bins, avg_bad_rate=bad_rate,
+                         file_prefix=file_prefix, folder_path=folder_path, debug=debug, inline=inline)
+
+
+def show_bins_by_periods(df, column_name, target_name, date_name, periods= \
+        [2016009, 2016010, 2016011, 2016012, 2017001, 2017002, 2017003],
+                         num_bins=5, file_prefix='by_periods_', folder_path='img_features', debug=False, inline=False):
+    bad_rate = round(df[target_name].sum() / len(df), 3)
+
+    df_copy = df[[date_name, target_name, column_name]].copy()
+    if not re.search('date', str(df_copy[date_name].dtype)):
+        df_copy[date_name] = df_copy[date_name].astype("datetime64")
+
+    df_copy['ym'] = df_copy[date_name].apply(lambda x: x.year * 1000 + x.month)
+
+    plt.clf()
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(14, 8))
+
+    info = pd.qcut(df_copy[column_name], num_bins, duplicates='drop').value_counts()
+    num_bins = min(num_bins, len(info))
+
+    i, bad_rates = 0, []
+
+    for p in periods:
+        df_bin_by_period = df_copy.loc[np.where(df_copy['ym'] == p)]
+
+        j = 0
+        for v in info.index.categories.values:
+            if i == 0 & j == 0:
+                bad_rates.append([])
+
+            df_bin = df_bin_by_period.loc[~pd.isnull(df_bin_by_period[column_name])
+                                          & (df_bin_by_period[column_name] > v.left) & (
+                                          df_bin_by_period[column_name] <= v.right)]
+
+            bin_size = len(df_bin)
+            period_bad_rate = df_bin[target_name].sum() / bin_size if bin_size else 0
+
+            bad_rates[j].append(period_bad_rate)
+            j += 1
+
+        i += 1
+
+    ax.hlines(bad_rate, -1, len(periods), linestyle='--', linewidth=1, label='Average bad rate')
+
+    for i in range(0, num_bins):
+        plt.plot(bad_rates[i], label=info.index.categories[i])
+
+    plt.legend(loc='upper right')
+    plt.title('bad rate by equal bins for feature %s' % column_name)
+    plt.ylabel('bad rate')
+    ax.set_xticks(range(0, len(periods)))
+    ax.set_xticklabels(
+        ['%02d/%d' % (p % 100, int(p / 1000)) for p in periods])
+
+    if inline:
+        plt.show()
+    else:
+        plt.savefig(folder_path + '/' + file_prefix + column_name + '.png')
+
+    plt.clf()
 
 
 def compare_distributions(df, split_size, column_name, labels=['Time frame #1', 'Time frame #2'],
@@ -379,12 +450,34 @@ def draw_distributions(result, target_column, file_name, folder_path, inline=Fal
 
 
 def draw_distributions_gen2(result, target_column, file_name, folder_path, inline=False, title=None,
-                      cumulative=False, normed=1):
+                      cumulative=False, normed=1, figsize=(12, 8)):
     plt.clf()
-    plt.hist(result.loc[result.realVal == 1, target_column], 100, label='Bad', color="red",
-            normed=normed, histtype='step', cumulative=cumulative)
-    plt.hist(result.loc[result.realVal == 0, target_column], 100, label='Good',
-             normed=normed, histtype='step',cumulative=cumulative)
+    plt.figure(figsize=figsize)
+    plt.hist(result.loc[result.realVal == 1, target_column], 100, alpha=0.8, label='Bad', color="red",
+             normed=normed, cumulative=cumulative)
+    plt.hist(result.loc[result.realVal == 0, target_column], 100, alpha=0.5, label='Good',
+             normed=normed, cumulative=cumulative)
+    plt.legend(loc='upper right')
+    plt.ylabel('Density' if not cumulative else '')
+    if title:
+        plt.title(title)
+
+    if inline:
+        plt.show()
+    else:
+        plt.savefig(folder_path + '/' + ('density_' if not cumulative else '') + file_name)
+
+    plt.clf()
+
+
+def draw_distributions_2_samples(a, b, score_column, file_name, folder_path, figsize=(12, 8), inline=False, title=None,
+                      cumulative=False, normed=1, labels=['Bad', 'Good']):
+    plt.clf()
+    a = a.loc[~pd.isnull(a[score_column])]
+    b = b.loc[~pd.isnull(b[score_column])]
+    plt.figure(figsize=figsize)
+    plt.hist(a[score_column], 100, label=labels[0], color="red", histtype='step', normed=normed, cumulative=cumulative)
+    plt.hist(b[score_column], 100, label=labels[1], histtype='step', normed=normed, cumulative=cumulative)
     plt.legend(loc='upper right')
     plt.ylabel('Density' if not cumulative else '')
     plt.title(title)
@@ -395,6 +488,95 @@ def draw_distributions_gen2(result, target_column, file_name, folder_path, inlin
         plt.savefig(folder_path + '/' + ('density_' if not cumulative else '') + file_name)
 
     plt.clf()
+
+
+def get_populations_diff(df, cutoff=None, skip_columns=[], target='target',
+                         get_percent_bad=None):
+    l = []
+
+    df = df.sort_values(target, ascending=[True])
+    len_df = len(df)
+
+    for c in df.columns.values:
+        if c not in skip_columns:
+            if get_percent_bad:
+                a = df.iloc[:math.ceil(len_df * (1 - get_percent_bad)), :]
+                b = df.iloc[math.ceil(len_df * (1 - get_percent_bad)):, :]
+                cutoff = 1 - get_percent_bad
+            else:
+                a = df.loc[df[target] <= cutoff]
+                b = df.loc[df[target] > cutoff]
+
+            st = stats1.ks_2samp(a[c], b[c])
+            st_t = stats1.ttest_ind(a.loc[~pd.isnull(a[c])][c],
+                                    b.loc[~pd.isnull(b[c])][c])
+            l.append({
+                'Name': c,
+                'Mean <=%.2f' % cutoff: round(np.mean(a[c]), 4),
+                'Mean >%.2f' % cutoff: round(np.mean(b[c]), 4),
+                'Median <=%.2f' % cutoff: round(np.median(a[c]), 4),
+                'Median >%.2f' % cutoff: round(np.median(b[c]), 4),
+                'KS stat': round(st[0], 4),
+                'KS stat p': round(st[1], 4),
+                't stat': round(st_t[0], 4),
+                't stat p': round(st_t[1], 4),
+                'Count NA': df[c].isnull().sum()
+            })
+
+    d = pd.DataFrame(l)
+    d = d[['Name', 'Mean <=%.2f' % cutoff, \
+           'Mean >%.2f' % cutoff, 'Count NA',
+           'Median <=%.2f' % cutoff, 'Median >%.2f' % cutoff,
+           'KS stat', 'KS stat p', 't stat', 't stat p']]
+    d = d.sort_values(['KS stat p', 'KS stat'], ascending=[False, True])
+    return d
+
+
+def get_populations_diff_with_plots(df, cutoff=None, skip_columns=[], target='target',
+                                    get_percent_bad=None):
+    l = []
+
+    df = df.sort_values(target, ascending=[True])
+    len_df = len(df)
+
+    for c in df.columns.values:
+        if c not in skip_columns:
+            if get_percent_bad:
+                a = df.iloc[:math.ceil(len_df * (1 - get_percent_bad)), :]
+                b = df.iloc[math.ceil(len_df * (1 - get_percent_bad)):, :]
+                cutoff = 1 - get_percent_bad
+            else:
+                a = df.loc[df[target] <= cutoff]
+                b = df.loc[df[target] > cutoff]
+
+            draw_distributions_2_samples(b, a, c, 'scores_comparison%s.png' % c,
+                                         'reports', inline=False,
+                                         title=c, cumulative=False, normed=False, labels=['10% of the worst scores',
+                                                                                          '90% of the best scores'])
+
+            st = stats1.ks_2samp(a[c], b[c])
+            st_t = stats1.ttest_ind(a.loc[~pd.isnull(a[c])][c],
+                                    b.loc[~pd.isnull(b[c])][c])
+            l.append({
+                'Name': c,
+                'Mean <=%.2f' % cutoff: round(np.mean(a[c]), 4),
+                'Mean >%.2f' % cutoff: round(np.mean(b[c]), 4),
+                'Median <=%.2f' % cutoff: round(np.median(a[c]), 4),
+                'Median >%.2f' % cutoff: round(np.median(b[c]), 4),
+                'KS stat': round(st[0], 4),
+                'KS stat p': round(st[1], 4),
+                't stat': round(st_t[0], 4),
+                't stat p': round(st_t[1], 4),
+                'Count NA': df[c].isnull().sum()
+            })
+
+    d = pd.DataFrame(l)
+    d = d[['Name', 'Mean <=%.2f' % cutoff, \
+           'Mean >%.2f' % cutoff, 'Count NA',
+           'Median <=%.2f' % cutoff, 'Median >%.2f' % cutoff,
+           'KS stat', 'KS stat p', 't stat', 't stat p']]
+    d = d.sort_values(['KS stat p', 'KS stat'], ascending=[False, True])
+    return d
 
 
 def draw_roc_curve(y_pred, target_test, file_name, folder_path, avg_auc_num, inline=False):
