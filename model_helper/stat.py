@@ -7,6 +7,7 @@ import numpy as np
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from model_helper.Transform import *
+from model_helper.stat_categorical import  *
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
@@ -95,16 +96,6 @@ def find_low_variance(df, max_v=0.0001, is_print=True):
     return res
 
 
-def show_cat_counts(df):
-    df_object = df.select_dtypes(include=['object']).copy()
-    columns_to_convert = df_object.columns
-    df_object = df_object[columns_to_convert]
-    df_object[columns_to_convert] = df_object.apply(lambda x: x.str.strip())
-
-    for c in columns_to_convert:
-        print('%d %s' % (len(df[c].value_counts().to_dict()), c))
-
-
 def find_equals(df, print_only_different=True):
     values = df.columns.values
     for i in range(0, len(values)):
@@ -116,6 +107,40 @@ def find_equals(df, print_only_different=True):
                         print("Pair: %s x %s" % (values[i], values[j]))
                 else:
                     print("Pair: %s x %s: %d" % (values[i], values[j], is_equal))
+
+
+def get_top_cor(df, threshold=0.95):
+    cor = df.corr()
+    indices = np.where(cor > threshold)
+    return [(cor.index[x], cor.columns[y]) for x, y in zip(*indices) if x != y and x < y]
+
+
+def find_correlated(df, column_name, threshold=0.5):
+    """
+    Find all columns that are highly correlated to the given
+    :param df:
+    :param column_name:
+    :param threshold:
+    :return:
+
+    """
+    for c in df:
+        if df[c].dtype == 'object':
+            continue
+
+        sub_df = df.loc[~pd.isnull(df[c]) & ~pd.isnull(df[column_name])][[c, column_name]]
+
+        # ?
+        # if len(sub_df) < 100:
+        #     continue
+
+        try:
+            corr = stats.pearsonr(sub_df[c], sub_df[column_name])
+        except ValueError:
+            print('Error with ', c)
+
+        if abs(corr[0]) > threshold:
+            print(c, corr, 'NA:', len(df) - len(sub_df))
 
 
 def find_unstable(l, allowed_std=.025):
@@ -494,34 +519,6 @@ def explore_var(df, name):
         plt.show()
 
     print()
-
-
-def find_correlated(df, column_name, threshold=0.5):
-    """
-    Find all columns that are highly correlated to the given
-    :param df:
-    :param column_name:
-    :param threshold:
-    :return:
-
-    """
-    for c in df:
-        if df[c].dtype == 'object':
-            continue
-
-        sub_df = df.loc[~pd.isnull(df[c]) & ~pd.isnull(df[column_name])][[c, column_name]]
-
-        # ?
-        # if len(sub_df) < 100:
-        #     continue
-
-        try:
-            corr = stats.pearsonr(sub_df[c], sub_df[column_name])
-        except ValueError:
-            print('Error with ', c)
-
-        if abs(corr[0]) > threshold:
-            print(c, corr, 'NA:', len(df) - len(sub_df))
 
 
 def cramers_corrected_stat(row1, row2):
