@@ -86,14 +86,26 @@ def report_correlations(df, columns_list, threshold=0.95, folder_save='reports',
     return d
 
 
-def get_populations_diff(df, cutoff=0.9, skip_columns=[]):
+def get_populations_diff(df, cutoff=None, skip_columns=[], target='target',
+                         get_percent_bad=None):
     l = []
+
+    df = df.sort_values(target, ascending=[True])
+    len_df = len(df)
 
     for c in df.columns.values:
         if c not in skip_columns:
-            a = df.loc[df['target'] <= cutoff]
-            b = df.loc[df['target'] > cutoff]
-            st = stats.ks_2samp(a[c], b[c])
+            if get_percent_bad:
+                a = df.iloc[:math.ceil(len_df * (1 - get_percent_bad)), :]
+                b = df.iloc[math.ceil(len_df * (1 - get_percent_bad)):, :]
+                cutoff = 1 - get_percent_bad
+            else:
+                a = df.loc[df[target] <= cutoff]
+                b = df.loc[df[target] > cutoff]
+
+            st = stats1.ks_2samp(a[c], b[c])
+            st_t = stats1.ttest_ind(a.loc[~pd.isnull(a[c])][c],
+                                    b.loc[~pd.isnull(b[c])][c])
             l.append({
                 'Name': c,
                 'Mean <=%.2f' % cutoff: round(np.mean(a[c]), 4),
@@ -102,11 +114,17 @@ def get_populations_diff(df, cutoff=0.9, skip_columns=[]):
                 'Median >%.2f' % cutoff: round(np.median(b[c]), 4),
                 'KS stat': round(st[0], 4),
                 'KS stat p': round(st[1], 4),
+                't stat': round(st_t[0], 4),
+                't stat p': round(st_t[1], 4),
                 'Count NA': df[c].isnull().sum()
             })
 
     d = pd.DataFrame(l)
-    d = d[['Name', 'Mean <=0.90', 'Mean >0.90', 'Count NA', 'Median <=0.90', 'Median >0.90', 'KS stat', 'KS stat p']]
+    d = d[['Name', 'Mean <=%.2f' % cutoff,
+           'Mean >%.2f' % cutoff, 'Count NA',
+           'Median <=%.2f' % cutoff, 'Median >%.2f' % cutoff,
+           'KS stat', 'KS stat p', 't stat', 't stat p']]
+    d = d.sort_values(['KS stat p', 'KS stat'], ascending=[False, True])
     return d
 
 
