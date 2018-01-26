@@ -454,9 +454,9 @@ def draw_distributions_gen2(result, target_column, file_name, folder_path, inlin
     plt.clf()
     plt.figure(figsize=figsize)
     plt.hist(result.loc[result.realVal == 1, target_column], 100, alpha=0.8, label='Bad', color="red",
-             normed=normed, cumulative=cumulative)
+             normed=normed, cumulative=cumulative, histtype='step')
     plt.hist(result.loc[result.realVal == 0, target_column], 100, alpha=0.5, label='Good',
-             normed=normed, cumulative=cumulative)
+             normed=normed, cumulative=cumulative, histtype='step')
     plt.legend(loc='upper right')
     plt.ylabel('Density' if not cumulative else '')
     if title:
