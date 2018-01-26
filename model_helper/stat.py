@@ -241,10 +241,14 @@ def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target
     check_columns = [x for x in check_columns if x not in skip_columns]
 
     for c in check_columns:
-        if not subs[c].isnull().values.any():
-            a = roc_auc_score(subs[target_name], subs[c])
-            # print("%0.3f: %s" % (a, c))
-            res[c] = a
+        # TODO check
+        a = roc_auc_score(subs.loc[~pd.isnull(subs[c])][target_name],
+                          subs.loc[~pd.isnull(subs[c])][c])
+
+        # if not subs[c].isnull().values.any():
+        #     a = roc_auc_score(subs[target_name], subs[c])
+        #     # print("%0.3f: %s" % (a, c))
+        res[c] = a
 
     functions = {
         '*': lambda x, y: x * y,
@@ -548,3 +552,33 @@ def cramers_corrected_stat(row1, row2):
     d = min((kcorr - 1), (rcorr - 1))
     return np.sqrt(phi2corr / d) if d > 0 else None
 
+
+def calc_trusted_auc(df, c, target, n=30, default_auc=0.5):
+    df_tmp = df.loc[~pd.isnull(df[c])][[c, target]]
+    results = []
+    if not len(df_tmp):
+        return default_auc
+
+    for i in range(n):
+        sample = df_tmp.sample(frac=1, replace=True)
+        try:
+            results.append(roc_auc_score(sample[target], sample[c]))
+        except ValueError:
+            return default_auc
+
+    return results
+
+
+# r = []
+# for i, c in enumerate(df_all.columns.values):
+#     aucs = calc_trusted_auc(df_all, c, target)
+#     if np.abs(np.mean(aucs) - 0.5) > 0.001:
+#         print(i, c, round(np.mean(aucs), 4), round(np.std(aucs), 4))
+#         r.append({'column': c, 'mean': round(np.mean(aucs), 4), 'std': round(np.std(aucs), 4),
+#                   'min': round(np.min(aucs), 4), 'max': round(np.max(aucs), 4),
+#                   'na_ratio': len(df_all.loc[~pd.isnull(df_all[c])]) / len(df_all)})
+#
+#
+# r = pd.DataFrame(r)
+# r['diff'] = np.abs(r['mean'] - 0.5)
+# r.query('std < 0.07').sort_values(['diff'], ascending=[False]).to_csv('data/near_aucs_filtered.txt', index=False)
