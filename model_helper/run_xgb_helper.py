@@ -21,6 +21,7 @@ import random
 import pickle
 from tqdm import tqdm
 import xgbfir
+import operator
 
 
 def split_into_folds(df, target, random_state=42):
@@ -130,7 +131,7 @@ class RunXGB:
 
     def go_and_save_model(self, num_boost_round, p_o_s, target, show_graph=True, threshold_useless=3,
                           files_prefix='', debug=True, show_auc=True,
-                          model_full_path='data/fraud_model.dat'):
+                          model_full_path='data/fraud_model.dat', count_extra_run=1):
         params = dict(self.xgb_params, silent=1)
 
         df = self.df.copy()
@@ -138,14 +139,18 @@ class RunXGB:
 
         df_train = df.ix[:, df.columns != target]
         target_train = df.ix[:, target]
-        id_train = df_train.ix[:, self.pk]
         df_train.drop([self.pk], axis=1, inplace=True)
-        df_columns = df.columns
         dtrain = xgb.DMatrix(df_train, target_train)
 
-        print(df_train.shape)
+        if debug:
+            print(df_train.shape)
 
         model = xgb.train(params, dtrain, num_boost_round=num_boost_round)
+
+        if count_extra_run:
+            for i in tqdm(range(count_extra_run)):
+                extra_model = xgb.train(dict(params, seed=i + 1), dtrain, num_boost_round=num_boost_round)
+                pickle.dump(extra_model, open(model_full_path + '_seed' + str(i), "wb"))
 
         # save model to file
         pickle.dump(model, open(model_full_path, "wb"))
@@ -177,15 +182,18 @@ class RunXGB:
 
     #  TODO compare!
     def go(self, num_boost_round, show_graph=True, threshold_useless=3, files_prefix='', debug=True, show_auc=True,
-               count_extra_run=None, save_features_info=True):
-        params = dict(self.xgb_params, silent=1)
+           count_extra_run=None, save_features_info=True, save_averaged=False,
+           step_without_bagging=3, seed_shift=0):
+        params = dict(self.xgb_params, silent=1, seed=0 + seed_shift)
         model = xgb.train(params, self.dtrain, num_boost_round=num_boost_round)
         files_prefix = '_' + files_prefix
+        features_interaction_file = 'data/' + files_prefix + '_features_info.xlsx'
 
         # print(model.feature_names)
+        features_scores = model.get_fscore()
         if debug:
             print("Using %d features" % len(model.feature_names))
-            print(model.get_fscore(), len(model.get_fscore()))
+            print(features_scores, len(features_scores))
 
         scores = model.get_fscore()
         list_useless, almost_useless = [], []
@@ -209,38 +217,68 @@ class RunXGB:
         y_pred = model.predict(self.dtest)
 
         if save_features_info:
-            xgbfir.saveXgbFI(model, OutputXlsxFile='data/' + files_prefix + '_features_info.xlsx')
+            xgbfir.saveXgbFI(model, OutputXlsxFile=features_interaction_file,
+                             MaxTrees=200, MaxHistograms=30)
 
         # _acc = accuracy_score(self.target_test, np.round(y_pred))
         _roc = roc_auc_score(self.target_test, y_pred)
 
+        predictions_extra_run = []
+        df_preds = pd.DataFrame({'pred_first': y_pred})
+
         if count_extra_run:
             rocs = [_roc]
             for i in tqdm(range(count_extra_run)):
-                extra_model = xgb.train(dict(params, seed=i + 1), self.dtrain, num_boost_round=num_boost_round)
+
+                # self.df_train, self.target_train - split
+                if (i + 1) % step_without_bagging == 0:
+                    dtrain = self.dtrain
+                else:
+                    df_train_tmp = self.df_train.sample(frac=1, replace=True, random_state=i + 1 + seed_shift)
+                    target_train_tmp = self.target_train.ix[df_train_tmp.index]
+                    dtrain = xgb.DMatrix(df_train_tmp, target_train_tmp)
+
+                extra_model = xgb.train(dict(params, seed=i + 1 + seed_shift), dtrain, num_boost_round=num_boost_round)
                 extra_y_pred = extra_model.predict(self.dtest)
                 rocs.append(roc_auc_score(self.target_test, extra_y_pred))
+                predictions_extra_run.append(extra_y_pred)
+                df_preds['pred_' + str(i) + '_is_full_%s' % str(int(i % step_without_bagging))] = extra_y_pred
 
-            print('Avg auc: %.2f +- %.2f; [%.2f .. %.2f]; range: %.2f; median: %.2f' %
-                  (np.mean(rocs) * 100, np.std(rocs) * 100, np.min(rocs) * 100, np.max(rocs) * 100,
-                   (np.max(rocs) - np.min(rocs)) * 100, np.median(rocs) * 100))
+            if save_averaged:
+                if debug:
+                    print('Results are averaged')
+                for prediction in predictions_extra_run:
+                    y_pred += prediction
+
+                y_pred /= count_extra_run + 1
+
+            if debug:
+                print('Avg auc: %.2f +- %.2f; [%.2f .. %.2f]; range: %.2f; median: %.2f' %
+                      (np.mean(rocs) * 100, np.std(rocs) * 100, np.min(rocs) * 100, np.max(rocs) * 100,
+                       (np.max(rocs) - np.min(rocs)) * 100, np.median(rocs) * 100))
+                print('Averaged model auc: %.2f' % (roc_auc_score(self.target_test, y_pred) * 100))
 
         if show_auc:
             draw_roc_curve(y_pred, self.target_test, files_prefix + '_auc.png', 'imgs', _roc)
 
         # print("Accuracy on hold-out: %.2f" % _acc)
-        if count_extra_run is None:
+        if count_extra_run is None and debug:
             print("Roc on test: %.2f (one run)" % (_roc * 100))
+
+        if debug:
+            print('Features info: ' + 'imgs/' + files_prefix + 'features.png')
+            print('Distribution: imgs/' + files_prefix + 'distributions.png')
+            print('Scores: data/' + files_prefix + 'result.csv')
+            print('Features interactions: ' + features_interaction_file)
 
         result = pd.DataFrame({'id': self.id_test, self.target: y_pred, 'realVal': self.target_test})
 
         if show_graph:
             draw_distributions(result, self.target, files_prefix + 'distributions.png', 'imgs')
 
-        result = pd.DataFrame({'id': self.id_test, self.target: y_pred, 'realVal': self.target_test})
         result.to_csv('data/' + files_prefix + 'result.csv', index=False)
-        return _roc
-
+        return result, df_preds, {'used': features_scores, 'useless': list_useless,
+                                  'almost_useless': almost_useless}
 
     # def go(self, num_boost_round, show_graph=True, threshold_useless=3, files_prefix='',
     #        debug=True, show_auc=True):
@@ -390,7 +428,7 @@ class RunXGB:
 
     def cv_xgb(self, xgb_params, train, y_train, num_boost_rounds=474,
                split_useless_bottom=2, debug=True, monitor_last_periods=3,
-               random_state=42, runs_for_fold=1):
+               random_state=42, runs_for_fold=1, plot_features_score=False):
         # stratified_split = StratifiedShuffleSplit(n_splits=self.num_of_test_splits, random_state=0)
         X = train.values
         y = y_train.values
@@ -398,7 +436,7 @@ class RunXGB:
         kf.get_n_splits(X)
 
         i = 0
-        list_useless, list_alm, l_f  = {}, {}, {}
+        list_useless, list_alm, l_f = {}, {}, {}
         # for train_index, test_index in stratified_split.split(X, y):
         #     Cont.df_res = df_train[[pk]].copy()
         #     Cont.df_res['scores'] = np.NAN
@@ -418,10 +456,18 @@ class RunXGB:
 
             _roc = []
             for j in range(0, max(1, runs_for_fold)):
-                model = xgb.train(dict(xgb_params, silent=1, random_state=i * 1000 + j),
+                model = xgb.train(dict(xgb_params, silent=1, seed=i * 1000 + j),
                                   dtrain, num_boost_round=num_boost_rounds, verbose_eval=0)
                 train_predictions = model.predict(dtest)
                 _roc.append(roc_auc_score(y_test, train_predictions))
+
+                if plot_features_score and j == 0:
+                    fig, ax = plt.subplots(1, 1, figsize=(8, 16))
+                    xgb.plot_importance(model, height=0.5, ax=ax)
+                    print(model.get_fscore())
+                    plt.show()
+
+                    # draw_distributions(result, self.target, 'cv_distributions.png', 'imgs', inline=True)
 
             # Cont.df_res.ix[test_index, 'scores'] = train_predictions
             # Cont.df_res.ix[test_index, 'real_y'] = y_test
@@ -618,6 +664,98 @@ class RunXGB:
         train_val = float(r.loc[r['type'] == 'train-auc-mean']['val'])
         test_val = float(r.loc[r['type'] == 'test-auc-mean']['val'])
         return test_val - (test_val - train_val) * train_test_penalize
+
+    @staticmethod
+    def sort_features(f_list, print_score=True):
+        sorted_features = sorted(f_list.items(), key=operator.itemgetter(1), reverse=True)
+        for m in sorted_features:
+            print("'" + m[0] + "',", end='')
+            if print_score:
+                print(str(m[1]) + ",")
+            else:
+                print()
+
+
+class XgbCvScores:
+    """
+    Save cross validation scores for all folds
+    """
+    def __init__(self, xgb_params, df, target, pk, num_boost_rounds, num_of_test_splits=5, train_test_split=0.8):
+        self.xgb_params = xgb_params
+        self.target = target
+        self.pk = pk
+        self.df = df
+        self.num_of_test_splits = num_of_test_splits
+        self.num_boost_rounds = num_boost_rounds
+        self.df.sort_values(pk, ascending=True, inplace=True)
+        self.df = self.df.iloc[:math.ceil(len(self.df) * train_test_split), :]
+        self.is_scored = False
+
+    def split_into_folds(self, columns, random_state=42):
+        skf = KFold(n_splits=self.num_of_test_splits, shuffle=False, random_state=random_state)
+        res = []
+
+        for big_ind, small_ind in skf.split(np.zeros(len(self.df)), self.df[self.target]):
+            res.append((self.df[columns].iloc[big_ind], self.df[columns].iloc[small_ind]))
+
+        return res
+
+    def go(self, count_extra_run=3, save_folder='reports', save_file='oos_result'):
+        self.df['scores'] = np.NaN
+
+        acc_overall, roc_overall = 0, 0
+        i = 0
+        columns = [x for x in self.df.columns.values if x not in [self.pk]]
+        columns2 = [x for x in columns if x not in [self.target]]
+        splits = self.split_into_folds(columns)
+
+        for train, test in splits:
+            df_train, target_train = train.loc[:, columns2], train.loc[:, self.target]
+            df_test, target_test = test.loc[:, columns2], test.loc[:, self.target]
+
+            X_train, y_train = df_train.values, target_train.values
+            X_test, y_test = df_test.values, target_test.values
+
+            print("Set: %d" % i, ':')
+            i += 1
+
+            dtrain = xgb.DMatrix(X_train, y_train, feature_names=df_train.columns.values)
+            dtest = xgb.DMatrix(X_test, feature_names=df_train.columns.values)
+
+            _rocs = []
+            for j in tqdm(range(0, count_extra_run)):
+                model = xgb.train(dict(self.xgb_params, silent=1, seed=42 + j), dtrain,
+                                  num_boost_round=self.num_boost_rounds, verbose_eval=0)
+                train_predictions = model.predict(dtest)
+
+                if j == 0:
+                    self.df.loc[test.index, 'scores'] = train_predictions
+
+                _rocs.append(roc_auc_score(y_test, train_predictions))
+
+            print(np.round(np.mean(_rocs) * 100, 2),
+                  np.round(np.std(_rocs) * 100, 2),
+                  np.round(_rocs, 4) * 100)
+            roc_overall += np.mean(_rocs)
+
+        roc_overall /= self.num_of_test_splits
+
+        print("Avg roc %.2f " % (roc_overall * 100))
+
+        result = pd.DataFrame({'id': self.df[self.pk], self.target: self.df['scores'], 'realVal': self.df[self.target]})
+        result.to_csv(save_folder + '/' + save_file + '.csv', index=False)
+
+        return result
+
+    def show_stats(self, inline=True, imgs_folder='imgs', auc_img_file='oos_cv_auc',
+                   distr_img_file='oos_distributions'):
+        _roc = roc_auc_score(self.df[self.target], self.df['scores'])
+        draw_roc_curve(self.df['scores'], self.df[self.target], auc_img_file + '.png',
+                       imgs_folder, _roc, inline=inline)
+        result = pd.DataFrame({'id': self.df[self.pk], self.target: self.df['scores'], 'realVal': self.df[self.target]})
+        draw_distributions(result, self.target, distr_img_file + '.png', imgs_folder, inline=inline)
+
+
 
 '''
     def final_scores(self, num_boost_round, show_graph=1, threshold_useless=3, files_prefix=''):
