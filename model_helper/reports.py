@@ -7,6 +7,19 @@ import statsmodels.stats as stats2
 import scipy.stats as stats
 
 
+def find_lists_intersection(*l):
+    """
+    Get intersection of lists for 1 dim lists only
+    :param l:
+    :return:
+    """
+    rest = l[0]
+    for i in range(1, len(l)):
+        rest = list(filter(set(rest).__contains__, l[i]))
+
+    return rest
+
+
 def report_numerical(df, columns_list, folder_save='reports', file_save='numerical_variables.csv', debug=True):
     l = []
     for c in columns_list:
@@ -25,7 +38,7 @@ def report_numerical(df, columns_list, folder_save='reports', file_save='numeric
     d.sort_values(['MissingNumber'], ascending=['True'], inplace=True)
     d = d.reindex_axis(['Name', 'MissingNumber', 'Min', 'Median', 'Max'], axis=1)
 
-    d.to_csv(folder_save + '/' + file_save, index=False)
+    d.to_csv(folder_save + '/' + file_save, index=False, header=True)
     return d
 
 
@@ -34,11 +47,11 @@ def report_categorical(df, columns_list, folder_save='reports', file_save='categ
     for c in columns_list:
         l.append({'Name': c,
                   'MissingNumber': df[c].isnull().sum(),
-                  'UniqueNumber': len(df_raw[c].value_counts())
+                  'UniqueNumber': len(df[c].value_counts())
                   })
 
         if debug:
-            print(c, df[c].isnull().sum(), len(df_raw[c].value_counts()))
+            print(c, df[c].isnull().sum(), len(df[c].value_counts()))
 
     d = pd.DataFrame(l)
     d.sort_values(['MissingNumber'], ascending=[False], inplace=True)
