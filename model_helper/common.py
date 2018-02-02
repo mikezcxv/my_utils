@@ -99,6 +99,19 @@ def find_lists_intersection(*l):
     return rest
 
 
+def find_lists_diff(first_list, second_list, ltr=True):
+    """
+    Get lists diff for 1 dim lists only
+    :return:
+    """
+    intersection = find_lists_intersection(first_list, second_list)
+
+    if ltr:
+        return [x for x in first_list if x not in intersection]
+    else:
+        return [x for x in second_list if x not in intersection]
+
+
 def asd():
     sys.exit()
 
