@@ -149,11 +149,15 @@ def show_bad_rate(df, date_column, target_name, file_name='bad_rate.png', folder
                   sens=32, fig_size=(16, 9), inline=False,
                   xticks_position='vertical', plt_title='Target rate', debug=False, pk='id'):
     df_date = df[[date_column, target_name]]
-    df_date[date_column] = df_date[date_column].astype("datetime64")
+    if not re.search('date', str(df_date[date_column].dtype)):
+        df_date[date_column] = df_date[date_column].astype("datetime64")
+
     df_date['date'] = df_date[date_column].apply(lambda x: x.year * 1000 + x.month * 10 + int(x.day / sens))
 
     df_date['date_inner'] = df[date_column]
-    df_date['date_inner'] = df_date['date_inner'].astype("datetime64")
+    if not re.search('date', str(df_date[date_column].dtype)):
+        df_date['date_inner'] = df_date['date_inner'].astype("datetime64")
+
     df_date[pk] = df[pk]
 
     data = []
@@ -310,7 +314,8 @@ def show_hist_by_periods_gen2(df, c, target, date_column, periods= \
 
 def show_bins_by_periods(df, column_name, target_name, date_name, periods= \
         [2016009, 2016010, 2016011, 2016012, 2017001, 2017002, 2017003],
-                         num_bins=5, file_prefix='by_periods_', folder_path='img_features', debug=False, inline=False):
+                         num_bins=5, file_prefix='stability_', folder_path='img_features', debug=False, inline=False,
+                         figsize=(14, 8)):
     bad_rate = round(df[target_name].sum() / len(df), 3)
 
     df_copy = df[[date_name, target_name, column_name]].copy()
@@ -320,7 +325,7 @@ def show_bins_by_periods(df, column_name, target_name, date_name, periods= \
     df_copy['ym'] = df_copy[date_name].apply(lambda x: x.year * 1000 + x.month)
 
     plt.clf()
-    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(14, 8))
+    fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize)
 
     info = pd.qcut(df_copy[column_name], num_bins, duplicates='drop').value_counts()
     num_bins = min(num_bins, len(info))
@@ -353,7 +358,11 @@ def show_bins_by_periods(df, column_name, target_name, date_name, periods= \
         plt.plot(bad_rates[i], label=info.index.categories[i])
 
     plt.legend(loc='upper right')
-    plt.title('bad rate by equal bins for feature %s' % column_name)
+    plt.title('bad rate by equal bins for feature %s, avg AUC %.2f: ' %
+              (column_name,
+               roc_auc_score(
+                   df_copy.loc[~pd.isnull(df_copy[column_name])][target_name],
+                   df_copy.loc[~pd.isnull(df_copy[column_name])][column_name])))
     plt.ylabel('bad rate')
     ax.set_xticks(range(0, len(periods)))
     ax.set_xticklabels(
