@@ -34,6 +34,14 @@ def split_into_folds(df, target, random_state=42):
 class RunXGB:
     def __init__(self, xgb_params, df, df_train, target_train, df_test, target_test, id_test, target, pk,
                  num_of_test_splits=5):
+
+        if 'scale_pos_weight' in xgb_params:
+            bad_ratio = df.shape[0] / df[target].sum()
+            if abs(bad_ratio - xgb_params['scale_pos_weight']) > 0.05:
+                raise ValueError('!Always check scale_pos_weight on new dataset\n',
+                                 'Param is %.10f but actual is %.10f' %
+                                 (xgb_params['scale_pos_weight'], bad_ratio))
+
         self.xgb_params = xgb_params
         self.target = target
         self.pk = pk
@@ -462,9 +470,17 @@ class RunXGB:
                 _roc.append(roc_auc_score(y_test, train_predictions))
 
                 if plot_features_score and j == 0:
-                    fig, ax = plt.subplots(1, 1, figsize=(8, 16))
-                    xgb.plot_importance(model, height=0.5, ax=ax)
-                    print(model.get_fscore())
+                    try:
+                        fig, ax = plt.subplots(1, 1, figsize=(8, 16))
+                        xgb.plot_importance(model, height=0.5, ax=ax)
+                        print(model.get_fscore())
+                        model.dump_model('reports/dump.raw_fold_%d.txt' % i)
+                        xgbfir.saveXgbFI(model,
+                                         OutputXlsxFile='reports/features_importance_fold%d.xlsx' % i,
+                                         MaxTrees=200, MaxHistograms=30)
+                    except ValueError:
+                        print('Scores are not available for this booster')
+
                     plt.show()
 
                     # draw_distributions(result, self.target, 'cv_distributions.png', 'imgs', inline=True)
