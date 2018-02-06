@@ -569,6 +569,31 @@ def calc_trusted_auc(df, c, target, n=30, default_auc=0.5):
     return results
 
 
+# Draft
+def check_data_consistency(df, column):
+    from_ix, to_ix, l = 0, 0, len(df_all)
+
+    num_splits = 8
+    chunk_size = 1
+    for i in range(1, num_splits + 2):
+        to_ix = i / (num_splits + 1)
+        current_set = df.loc[math.ceil(from_ix * l):math.ceil(to_ix * l), column]
+
+        if i > 1:
+            print(stats1.ks_2samp(prev_set, current_set))
+            print(stats1.ttest_ind(prev_set.loc[~pd.isnull(prev_set)],
+                                   current_set.loc[~pd.isnull(current_set)]))
+
+            na_prev = round(len(prev_set.loc[pd.isnull(prev_set)]) * 100 / chunk_size, 4)
+            na_curr = round(len(current_set.loc[pd.isnull(current_set)]) * 100 / chunk_size, 4)
+            print('NA prev: %.2f%% NA curr: %.2f%% ' % (na_prev, na_curr), '\n')
+        else:
+            chunk_size = len(df) / (num_splits + 1)
+
+        prev_set = current_set
+        from_ix = to_ix
+        # For a different distribution, we can reject the null hypothesis since the pvalue is below 1%:
+
 # r = []
 # for i, c in enumerate(df_all.columns.values):
 #     aucs = calc_trusted_auc(df_all, c, target)
