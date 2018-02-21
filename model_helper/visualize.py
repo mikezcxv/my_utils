@@ -155,7 +155,7 @@ def show_bad_rate(df, date_column, target_name, file_name='bad_rate.png', folder
     df_date['date'] = df_date[date_column].apply(lambda x: x.year * 1000 + x.month * 10 + int(x.day / sens))
 
     df_date['date_inner'] = df[date_column]
-    if not re.search('date', str(df_date[date_column].dtype)):
+    if not re.search('date', str(df_date['date_inner'].dtype)):
         df_date['date_inner'] = df_date['date_inner'].astype("datetime64")
 
     df_date[pk] = df[pk]
@@ -312,22 +312,38 @@ def show_hist_by_periods_gen2(df, c, target, date_column, periods= \
                          file_prefix=file_prefix, folder_path=folder_path, debug=debug, inline=inline)
 
 
+# Monthly format example:
+# periods=[170208, 170209, 170210, 170211, 170212],
 def show_bins_by_periods(df, column_name, target_name, date_name, periods= \
         [2016009, 2016010, 2016011, 2016012, 2017001, 2017002, 2017003],
                          num_bins=5, file_prefix='stability_', folder_path='img_features', debug=False, inline=False,
-                         figsize=(14, 8)):
+                         figsize=(14, 8), daily=False):
     bad_rate = round(df[target_name].sum() / len(df), 3)
 
     df_copy = df[[date_name, target_name, column_name]].copy()
     if not re.search('date', str(df_copy[date_name].dtype)):
         df_copy[date_name] = df_copy[date_name].astype("datetime64")
 
-    df_copy['ym'] = df_copy[date_name].apply(lambda x: x.year * 1000 + x.month)
+    if daily:
+        df_copy['ym'] = df_copy[date_name].apply(lambda x: (x.year % 100) * 10000 + x.month * 100 + x.day)
+    else:
+        df_copy['ym'] = df_copy[date_name].apply(lambda x: x.year * 1000 + x.month)
 
     plt.clf()
     fig, ax = plt.subplots(nrows=1, ncols=1, figsize=figsize)
 
     info = pd.qcut(df_copy[column_name], num_bins, duplicates='drop').value_counts()
+
+    # Fix for outliers
+    # lim = df[c].quantile([0.001, 0.999])
+    # left = lim.iloc[0]
+    # right = lim.iloc[1]
+    # pd.qcut(df.loc[(df[c] < right) & (df[c] > left)][c], q=3, duplicates='drop').value_counts()
+
+    # Don't split by quantils if there only two value
+    if len(df_copy[column_name].unique()) == 2:
+        info = pd.cut(df_copy[column_name], 2).value_counts()
+
     num_bins = min(num_bins, len(info))
 
     i, bad_rates = 0, []
@@ -365,8 +381,13 @@ def show_bins_by_periods(df, column_name, target_name, date_name, periods= \
                    df_copy.loc[~pd.isnull(df_copy[column_name])][column_name])))
     plt.ylabel('bad rate')
     ax.set_xticks(range(0, len(periods)))
-    ax.set_xticklabels(
-        ['%02d/%d' % (p % 100, int(p / 1000)) for p in periods])
+
+    if daily:
+        ll = ['%02d/%d' % (p % 100, int(p / 100)) for p in periods]
+    else:
+        ll = ['%02d/%02d/%02d' % (int(p // 10000), int((p // 100) % 100), p % 100) for p in periods]
+
+    ax.set_xticklabels(ll)
 
     if inline:
         plt.show()
