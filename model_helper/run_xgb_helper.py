@@ -692,6 +692,26 @@ class RunXGB:
                 print()
 
 
+class RunXGBv2(RunXGB):
+    def __init__(self, xgb_params, df, columns, target, pk, oos_split=0.7, num_of_test_splits=5):
+
+        df_train = df.ix[:math.ceil(len(df) * oos_split), ]
+        df_test = df.ix[math.ceil(len(df) * oos_split):, ]
+
+        target_train = df_train[target]
+        target_test = df_test[target]
+
+        df_train = df_train[columns]
+        df_test = df_test[columns + [pk]]
+
+        id_test = df_test[pk]
+
+        df_test.drop([pk], axis=1, inplace=True)
+
+        super(RunXGBv2, self).__init__(xgb_params, df, df_train, target_train, df_test, target_test,
+                                       id_test, target, pk, num_of_test_splits)
+
+
 class XgbCvScores:
     """
     Save cross validation scores for all folds
