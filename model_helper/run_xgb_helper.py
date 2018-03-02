@@ -38,9 +38,9 @@ class RunXGB:
         if 'scale_pos_weight' in xgb_params:
             bad_ratio = df.shape[0] / df[target].sum()
             if abs(bad_ratio - xgb_params['scale_pos_weight']) > 0.05:
-                raise ValueError('!Always check scale_pos_weight on new dataset\n',
-                                 'Param is %.10f but actual is %.10f' %
-                                 (xgb_params['scale_pos_weight'], bad_ratio))
+                print('!Always check scale_pos_weight on new dataset\n',
+                              'Param is %.10f but actual is %.10f' %
+                              (xgb_params['scale_pos_weight'], bad_ratio))
 
         self.xgb_params = xgb_params
         self.target = target
@@ -710,6 +710,97 @@ class RunXGBv2(RunXGB):
 
         super(RunXGBv2, self).__init__(xgb_params, df, df_train, target_train, df_test, target_test,
                                        id_test, target, pk, num_of_test_splits)
+
+    def cv_xgb2(self, xgb_params, num_boost_rounds=474,
+               split_useless_bottom=2, debug=True, monitor_last_periods=3,
+               random_state=42, runs_for_fold=1, plot_features_score=False,
+               shuffle=False):
+        # stratified_split = StratifiedShuffleSplit(n_splits=self.num_of_test_splits, random_state=0)
+        X = self.df_train.values
+        y = self.target_train.values
+        kf = KFold(n_splits=self.num_of_test_splits, random_state=random_state, shuffle=shuffle)
+        kf.get_n_splits(X)
+
+        i = 0
+        list_useless, list_alm, l_f = {}, {}, {}
+        # for train_index, test_index in stratified_split.split(X, y):
+        #     Cont.df_res = df_train[[pk]].copy()
+        #     Cont.df_res['scores'] = np.NAN
+        #     Cont.df_res['real_y'] = np.NAN
+
+        res = []
+        for train_index, test_index in kf.split(X):
+            X_train, X_test = X[train_index], X[test_index]
+            y_train, y_test = y[train_index], y[test_index]
+
+            if debug:
+                print("  Set %d:" % i, end=' ')
+            i += 1
+
+            dtrain = xgb.DMatrix(X_train, y_train, feature_names=self.df_train.columns.values)
+            dtest = xgb.DMatrix(X_test, feature_names=self.df_train.columns.values)
+
+            _roc = []
+            for j in range(0, max(1, runs_for_fold)):
+                model = xgb.train(dict(xgb_params, silent=1, seed=i * 1000 + j),
+                                  dtrain, num_boost_round=num_boost_rounds, verbose_eval=0)
+                train_predictions = model.predict(dtest)
+                _roc.append(roc_auc_score(y_test, train_predictions))
+
+                if plot_features_score and j == 0:
+                    try:
+                        fig, ax = plt.subplots(1, 1, figsize=(8, 16))
+                        xgb.plot_importance(model, height=0.5, ax=ax)
+                        print(model.get_fscore())
+                        model.dump_model('reports/dump.raw_fold_%d.txt' % i)
+                        xgbfir.saveXgbFI(model,
+                                         OutputXlsxFile='reports/features_importance_fold%d.xlsx' % i,
+                                         MaxTrees=200, MaxHistograms=30)
+                    except ValueError:
+                        print('Scores are not available for this booster')
+
+                    plt.show()
+
+                    # draw_distributions(result, self.target, 'cv_distributions.png', 'imgs', inline=True)
+
+            # Cont.df_res.ix[test_index, 'scores'] = train_predictions
+            # Cont.df_res.ix[test_index, 'real_y'] = y_test
+
+            # _acc = accuracy_score(y_test, np.round(train_predictions))
+            _roc = np.mean(_roc)
+            res.append(_roc)
+
+            # false_positive_rate, true_positive_rate, thresholds = roc_curve(y_test, clf.predict(dtest))
+            # may differ
+            # print(auc(false_positive_rate, true_positive_rate))
+
+            # print(_acc)
+            if debug:
+                print(round(_roc * 100, 2))
+            list_useless[i], list_alm[i] = report_useless_features(model, split_useless_bottom)
+            l_f[i] = np.unique(list_useless[i] + list_alm[i]).tolist()
+            # list(set(list_useless[i] + list_alm[i]))
+
+            # acc_overall += _acc
+        # acc_overall /= self.num_of_test_splits
+        # print(predictions, original)
+
+        # print("Avg accuracy %.2f " % acc_overall)
+        # list_useless[1], list_useless[2], list_useless[3],
+        useless = list_useless[self.num_of_test_splits]
+        almost_u = l_f[self.num_of_test_splits]
+
+        for h in range(1, monitor_last_periods + 1):
+            useless = find_lists_intersection(useless, list_useless[self.num_of_test_splits - h])
+            almost_u = find_lists_intersection(useless, l_f[self.num_of_test_splits - h])
+
+        if debug:
+            print("Avg auc: %.2f std %.2f" % (round(np.mean(res) * 100, 2), (round(np.std(res) * 100, 2))),
+                  end="\n\n")
+            print("Useless in all periods:", useless, end="\n\n")
+            print("Almost useless(< 2 splits) in all periods:", almost_u)
+
+        return [useless, almost_u]
 
 
 class XgbCvScores:
