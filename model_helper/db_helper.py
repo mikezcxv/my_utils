@@ -92,3 +92,23 @@ class DbWriter:
 
     def __del__(self):
         self.finalize()
+
+
+class Queries:
+    def __init__(self, credentials, table_name):
+        self.conn = self.get_connect(credentials)
+        self.table_name = table_name
+
+    @staticmethod
+    def get_connect(credentials):
+        try:
+            return psycopg2.connect(credentials)
+        except ConnectionError:
+            print("Unable to connect to the database")
+
+    def fetch_row(self, val, column_name, columns):
+        columns = ','.join(columns)
+        _cur = self.conn.cursor()
+        _cur.execute("SELECT " + columns + " FROM %s WHERE %s = %s"
+                     % (self.table_name, column_name, val))
+        return _cur.fetchone()
