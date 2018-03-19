@@ -55,12 +55,18 @@ class RunXGB:
         self.dtest = xgb.DMatrix(df_test)
         self.id_test = id_test
 
-    def get_max_boost(self, debug=False, num_folds=6, max_boost_rounds=1500, verbose_eval=50, count_extra_run=1):
+    def get_max_boost(self, debug=False, num_folds=6, max_boost_rounds=1500, verbose_eval=50,
+                      count_extra_run=1, metric='auc'):
         # Data structure in which to save out-of-folds preds
         early_stopping_rounds = 30
 
-        results = {'test-auc-mean': [], 'test-auc-std': [], 'train-auc-mean': [], 'train-auc-std': [],
-                   'num_rounds': []}
+        metric_keys = ['test-%s-mean' % metric, 'test-%s-std' % metric, 'train-%s-mean' % metric,
+                       'train-%s-std' % metric]
+
+        results = {'num_rounds': []}
+        for k in metric_keys:
+            results[k] = []
+
         iter_cv_result = []
         for i in tqdm(range(count_extra_run)):
             verb = verbose_eval if i < 2 else None
@@ -68,19 +74,19 @@ class RunXGB:
                                          num_boost_round=max_boost_rounds,
                                          early_stopping_rounds=early_stopping_rounds,
                                          verbose_eval=verb, show_stdv=False,
-                                         metrics={'auc'}, stratified=False, nfold=num_folds))
+                                         metrics={metric}, stratified=False, nfold=num_folds))
 
             results['num_rounds'].append(len(iter_cv_result[i]))
             t = iter_cv_result[i].ix[results['num_rounds'][i] - 1, :]
 
-            for c in ['test-auc-mean', 'test-auc-std', 'train-auc-mean', 'train-auc-std']:
+            for c in metric_keys:
                 results[c].append(t[c])
 
         num_boost_rounds = np.mean(results['num_rounds'])
 
         # Show results
         res = []
-        for c in ['train-auc-mean', 'test-auc-mean', 'train-auc-std', 'test-auc-std', 'num_rounds']:
+        for c in metric_keys + ['num_rounds']:
             factor = 100 if c != 'num_rounds' else 1
 
             res.append({'type': c,
