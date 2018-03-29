@@ -742,7 +742,90 @@ def floating_auc_by_dates(df, columns, target_name, date_column, pk,
         print('Nothing to do..')
 
 
-# TODO check
+def draw_corr_plot(df, columns, title, save_folder, save_file, size=5, debug=False):
+    corr = df[columns].corr()
+    if debug:
+        print(corr)
+
+    g = sns.pairplot(df[columns], kind='reg', size=size)
+    g.fig.suptitle(title)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.savefig(save_folder + '/' + save_file)
+
+    bottom = 5000
+    d1 = d[d['cnt_impressions'] > bottom][[x, y, filter_column]]
+
+
+def plot_regression_line(data, x, y, filter_column, filter_positives, filter_negatives,
+                         xlabel, ylabel, save_file, save_folder, label_shift=0.2):
+    """
+    Example of usage:
+    x, y, filter_column = 'avg_rank', 'ctr', 'brand'
+    xlabel, ylabel = 'Average ranking', 'CTR'
+    save_file, save_folder = 'reports/ratings/', 'CarLoansRankCtr2.png'
+
+    filter_positives = ['loans.com.au', 'RACQ Bank']
+    filter_negatives = ['Bank First', 'First Option Credit Union', 'Queensland Country Credit Union']
+
+    corr = d1[[x, y]].corr()
+    print(corr)
+    corr = round(corr.ix[0]['ctr'], 3)
+    title = 'Average CTR dependency on ranking. Pearson\'s correlation: %.3f' % corr
+
+    plot_regression_line(d1, x, y, filter_column, filter_positives, filter_negatives,
+                         xlabel, ylabel, save_file, save_folder, label_shift=0.2)
+
+    :param data:
+    :param x:
+    :param y:
+    :param filter_column:
+    :param filter_positives:
+    :param filter_negatives:
+    :param xlabel:
+    :param ylabel:
+    :param save_file:
+    :param save_folder:
+    :param label_shift:
+    :return:
+    """
+    # d1['markers'] = 'o'
+    # d1['markers'] = np.where(d1.brand.isin(filter_positives), 's', 'o')
+
+    # g = sns.pairplot(d1, kind='reg', size=5)
+    g = sns.lmplot(x=x, y=y, data=data, size=8)
+    ax = g.axes.flatten()
+    ax[0].set_title(title)
+    # plt.subplots_adjust(top=0.9)
+    # g.fig.suptitle('Average CTR dependency on ranking. Pearson\'s correlation: %.3f' % corr, )
+
+    for label in filter_negatives:
+        bbox_props = dict(boxstyle="round", fc="w", ec="red", alpha=0.8)
+        ax[0].text(data.loc[data[filter_column] == label, x] + label_shift,
+                   data.loc[data[filter_column] == label, y], label, ha="left", va="center", size=11,
+                   bbox=bbox_props)
+
+    for label in filter_positives:
+        bbox_props = dict(boxstyle="round", fc="w", ec="green", alpha=0.8)
+        ax[0].text(data.loc[data[filter_column] == label, x] + label_shift,
+                   data.loc[data[filter_column] == label, y], label, ha="left", va="center", size=11,
+                   bbox=bbox_props)
+    # ax[0].annotate("", xy=d1.loc[d1['brand']== label, ['avg_rank', 'ctr']],
+    #             xytext=(0.8, 0.8), textcoords='data', arrowprops=dict(arrowstyle="->", connectionstyle="arc3"),)
+
+    ax[0].set_ylim([0, np.max(d1['ctr']) * 1.1])
+
+    # Filled with collor
+    # plt.annotate(label, d1.loc[d1['brand']== label, ['ctr','avg_rank']].mean(),
+    #      horizontalalignment='right', verticalalignment='top',
+    #      size=10, weight='normal', color='white', backgroundcolor='green')
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.savefig(save_file + save_folder)
+
+
+    # TODO check
 # @deprecated
 def draw_barplots(df, target_name, period="year", file_suffix=""):
     # sns.factorplot("kind", "pulse", "diet", exercise, kind="point", size=4, aspect=2)
