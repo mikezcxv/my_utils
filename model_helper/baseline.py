@@ -148,9 +148,12 @@ def get_d_tree_baseline_multiple(df_train, df_test, y_train, y_test,
 def get_logistic_baseline_multiple(df_train, df_test, y_train, y_test,
                                    _cs=[1e-2, 1e-1, 1, 1e+1, 1e+2, 1e+3],
                                    fill_nas=[-999999, -1, 0, 'mean', 'median', 10000000]):
+    print('\t'.join(['C', 'AUC', 'loss', 'mean repl.']))
     for _C in _cs:
-        print('C: ' + str(_C))
-        for fill_na in fill_nas:
+        print(str(_C), end='\t')
+        for i, fill_na in enumerate(fill_nas):
+            if i > 0:
+                print('\t', end='')
 
             clf = LogisticRegression(C=_C, max_iter=100, random_state=42)
 
@@ -175,9 +178,10 @@ def get_logistic_baseline_multiple(df_train, df_test, y_train, y_test,
             clf.fit(x_train, y_train)
             p = clf.predict_proba(x_test)[:, 1]
 
-            print("%.3f AUC; %.4f loss %s" % (roc_auc_score(y_test, p),
-                                              round(log_loss(y_test, p), 4),
-                                              'NA replaced with: ' + str(fill_na)))
+            print("%.2f\t%.4f\t%s" % (roc_auc_score(y_test, p) * 100,
+                                      round(log_loss(y_test, p), 4),
+                                      str(fill_na)))
+        print('\n', end='')
 
 
 def get_cross_val_probability(clf, X, y, n_splits=5, shuffle=False, is_stratified=False, random_state=42):
