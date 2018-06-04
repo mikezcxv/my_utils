@@ -112,3 +112,8 @@ class Queries:
         _cur.execute("SELECT " + columns + " FROM %s WHERE %s = %s"
                      % (self.table_name, column_name, val))
         return _cur.fetchone()
+
+    def execute(self, query):
+        _cur = self.conn.cursor()
+        _cur.execute(query)
+        return self.conn.commit()
