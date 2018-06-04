@@ -1,7 +1,7 @@
 
 
 def wrap_cv(min_child_weight, colsample_bytree, max_depth, subsample, gamma, alpha, reg_lambda,
-            debug=False, num_folds=6, max_boost_rounds=300, verbose_eval=50, count_extra_run=3,
+            eta, scale_pos_weight, debug=False, num_folds=6, max_boost_rounds=300, verbose_eval=50, count_extra_run=3,
             train_test_penalize=0.05):
     # Data structure in which to save out-of-folds preds
     early_stopping_rounds = 30
@@ -13,11 +13,12 @@ def wrap_cv(min_child_weight, colsample_bytree, max_depth, subsample, gamma, alp
     params['gamma'] = max(gamma, 0)
     params['alpha'] = max(alpha, 0)
     params['reg_lambda'] = max(reg_lambda, 0)
+    params['eta'] = max(eta, 0)
+    params['scale_pos_weight'] = max(scale_pos_weight, 1)
 
-    #     , target_train = tr.ix[:, tr.columns != target], tr.ix[:, target]
+    # , target_train = tr.ix[:, tr.columns != target], tr.ix[:, target]
 
-    results = {'test-auc-mean': [], 'test-auc-std': [], 'train-auc-mean': [],
-               'train-auc-std': [], 'num_rounds': []}
+    results = {'test-auc-mean': [], 'test-auc-std': [], 'train-auc-mean': [], 'train-auc-std': [], 'num_rounds': []}
     iter_cv_result = []
     for i in range(count_extra_run):
         verb = verbose_eval if i < 2 else None
@@ -58,7 +59,12 @@ def wrap_cv(min_child_weight, colsample_bytree, max_depth, subsample, gamma, alp
     return test_val - (test_val - train_val) * train_test_penalize
 
 
-dtrain = xgb.DMatrix(df_train, target_train)
+# r = wrap_cv(11, 0.7, 3, 0.5, .25, 1, 20,
+#         debug=False, num_folds=6, max_boost_rounds=5, verbose_eval=50, count_extra_run=3)
+
+from bayes_opt import BayesianOptimization
+
+dtrain = xgb.dtrain
 
 # r = wrap_cv(11, 0.7, 3, 0.5, .25, 1, 20,
 #         debug=False, num_folds=6, max_boost_rounds=5, verbose_eval=50, count_extra_run=3)
@@ -80,6 +86,28 @@ xgbBO = BayesianOptimization(wrap_cv, {'min_child_weight': (11, 300),
                                        })
 
 xgbBO.maximize(init_points=init_points, n_iter=num_iter)
+
+# num_rounds = 300
+# random_state = 42
+# num_iter = 150
+# init_points = 4
+# params = {'silent': 1, 'eval_metric': 'auc', 'verbose_eval': True, 'seed': random_state,
+#           'objective': 'binary:logistic', 'alpha' : 0}
+#
+# dtrain = rx.dtrain
+#
+# xgbBO = BayesianOptimization(wrap_cv, {'min_child_weight': (5, 120),
+#                                        'colsample_bytree': (0.1, 0.4),
+#                                        'max_depth': (3, 6),
+#                                        'subsample': (0.45, 0.75),
+#                                        'gamma': (0, 5),
+#                                        'eta': (0.01, 0.05),
+#                                        'alpha': (0, 0),
+#                                        'reg_lambda': (10, 70),
+#                                        'scale_pos_weight': (1, 80)
+#                                        })
+#
+# xgbBO.maximize(init_points=init_points, n_iter=num_iter)
 
 # ---------------------
 # from bayes_opt import BayesianOptimization
