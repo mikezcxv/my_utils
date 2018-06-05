@@ -9,6 +9,31 @@ from sklearn.metrics import roc_curve, roc_auc_score
 import datetime
 from matplotlib.dates import date2num
 from model_helper.common import *
+from scipy.stats import ks_2samp, ttest_ind
+
+
+def compare_distributions(m, c, max_value, legend=['Train', 'Test'], mean_format=' %.5f '):
+    m1 = m[~pd.isnull(m[c])]
+    m2 = m1.loc[m1[c] < max_value]
+
+    g1 = m2[m2.is_test == 0][c]
+    g2 = m2[m2.is_test == 1][c]
+
+    r = ks_2samp(g1, g2)
+    t = ttest_ind(g1, g2)
+
+    plt.figure(figsize=(10, 6))
+    plt.title(c + ' [ KS %.3f p-val %.6f || t-test %.3f p-val %.6f ]' % (r[0], r[1], t[0], t[1]))
+    y1, x1, _ = plt.hist(g1, bins=100)
+    y2, x2, _ = plt.hist(g2, bins=100)
+    plt.legend([legend[0] + mean_format % np.mean(g1), legend[1] + mean_format % np.mean(g2)])
+    plt.vlines(np.mean(g1), 0, max(y1.max(), y1.max()) * 0.9, linestyles='--', colors='blue')
+    plt.vlines(np.mean(g2), 0, max(y1.max(), y1.max()) * 0.9, linestyles='--', colors='orange')
+    plt.savefig('compare_%s.png' % c)
+
+
+# c = 'chex-advisor__debit-bureau-score'
+# compare_distributions(c, 9900.0, ['Dev sample', 'Aug - Dec'], mean_format=' %.1f')
 
 
 # Target exploration
