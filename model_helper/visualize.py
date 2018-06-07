@@ -11,6 +11,11 @@ from matplotlib.dates import date2num
 from model_helper.common import *
 from scipy.stats import ks_2samp, ttest_ind
 
+# Continuous - compare_distributions
+#            - plot_by_bins
+
+# Categorical - plot_pivot
+
 
 def compare_distributions(m, c, max_value, legend=['Train', 'Test'], mean_format=' %.5f '):
     m1 = m[~pd.isnull(m[c])]
@@ -30,6 +35,48 @@ def compare_distributions(m, c, max_value, legend=['Train', 'Test'], mean_format
     plt.vlines(np.mean(g1), 0, max(y1.max(), y1.max()) * 0.9, linestyles='--', colors='blue')
     plt.vlines(np.mean(g2), 0, max(y1.max(), y1.max()) * 0.9, linestyles='--', colors='orange')
     plt.savefig('compare_%s.png' % c)
+
+
+def plot_by_bins(df, c, date_column, count_bins=10, period='M', img_prefix='counts_binned_', save_folder='imgs',
+                 title_pattern='Counts by bins for %s', col_wrap=2, size=12, inline=True, target=None):
+    # !Shows target rate if target passed
+
+    # bined, bin_boundaries = pd.qcut(df[c], 10, retbins=True)
+    new_name = 'binned_%s' % c
+    df[new_name] = pd.qcut(m[c], count_bins)
+
+    if target is None:
+        grouped = pd.concat([df[new_name], df[date_column]], axis=1) \
+            .groupby((df[date_column].dt.to_period(period), df[new_name])).size().reset_index()
+    else:
+        grouped = pd.concat([df[new_name], df[date_column], df[target]], axis=1) \
+            .groupby((df[date_column].dt.to_period(period), df[new_name])).mean().reset_index()
+
+    grouped.columns = [grouped.columns[0], grouped.columns[1], 'bin_count']
+    sns.factorplot(x=new_name, y="bin_count", col=date_column, data=grouped, kind="bar",
+                   col_wrap=col_wrap, size=size, sharex=False)
+
+    plt.title(title_pattern % c)
+    if inline:
+        plt.show()
+
+    plt.savefig('%s/%s_%s.png' % (save_folder, img_prefix, c))
+    return grouped
+
+
+def plot_pivot(df, column, date_column, img_prefix='top_', save_folder='imgs',
+               is_bar=False, figsize=(14, 6)):
+    df['month'] = df['created_at'].apply(lambda x: x.year * 1000 + x.month)
+
+    r = df[[date_column, column, 'month']].groupby(('month', column)).size().reset_index() \
+        .pivot(index='month', columns=column).fillna(0)
+    # r[0][9:].to_csv('data/top_retailers_by_status.csv')
+    if is_bar:
+        r.plot(figsize=figsize, grid=True, kind='bar', stacked=True)
+    else:
+        r.plot(figsize=figsize, grid=True)
+
+    plt.savefig('%s/%s_%s.png' % (save_folder, img_prefix, column))
 
 
 # c = 'chex-advisor__debit-bureau-score'
