@@ -8,6 +8,36 @@ import operator
 # sys.path.append(os.path.expanduser('~/PyProjects/my_utils'))
 # from model_helper.common import *
 
+def split_by_months(df, date_column, range_column=None):
+    """
+    The way to use it
+    for d in split_by_months(df_cleaned_vs_date, 'created_at', 'id').iterrows():
+        print(d[0], '---', d[1][0], d[1][1], d[1][2])
+    """
+    if not range_column:
+        range_column = date_column
+
+    return df[range_column].groupby([df[date_column].dt.year, df[date_column].dt.month]) \
+        .agg(['min', 'max', 'count'])
+
+
+# TODO create separate helper
+def report_useless_features(model, threshold_useless=3, debug=False):
+    scores = model.get_fscore()
+    list_useless = []
+    almost_useless = []
+    for fn in model.feature_names:
+        if fn not in scores:
+            list_useless.append(fn)
+        elif scores[fn] < threshold_useless:
+            almost_useless.append(fn)
+
+    if debug:
+        print("List useless:", list_useless)
+        print("List almost useless:", almost_useless)
+
+    return list_useless, almost_useless
+
 
 # DF related
 def shape_info(df, msg, prefix='', debug=True):
@@ -69,6 +99,19 @@ def find_lists_intersection(*l):
     return rest
 
 
+def find_lists_diff(first_list, second_list, ltr=True):
+    """
+    Get lists diff for 1 dim lists only
+    :return:
+    """
+    intersection = find_lists_intersection(first_list, second_list)
+
+    if ltr:
+        return [x for x in first_list if x not in intersection]
+    else:
+        return [x for x in second_list if x not in intersection]
+
+
 def asd():
     sys.exit()
 
@@ -82,24 +125,6 @@ def set_if_none(data, field, value):
 
 def sort_dictionary(data, reverse=True):
     return sorted(data.items(), key=operator.itemgetter(1), reverse=reverse)
-
-
-# TODO create separate helper
-def report_useless_features(model, threshold_useless=3, debug=False):
-    scores = model.get_fscore()
-    list_useless = []
-    almost_useless = []
-    for fn in model.feature_names:
-        if fn not in scores:
-            list_useless.append(fn)
-        elif scores[fn] < threshold_useless:
-            almost_useless.append(fn)
-
-    if debug:
-        print("List useless:", list_useless)
-        print("List almost useless:", almost_useless)
-
-    return list_useless, almost_useless
 
 
 # File system helper

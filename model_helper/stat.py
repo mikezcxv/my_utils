@@ -1,11 +1,13 @@
 import math
 import re
+import gc
 import scipy.stats as stats
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from model_helper.Transform import *
+from model_helper.stat_categorical import  *
 import matplotlib
 import gc
 matplotlib.use('agg')
@@ -95,16 +97,6 @@ def find_low_variance(df, max_v=0.0001, is_print=True):
     return res
 
 
-def show_cat_counts(df):
-    df_object = df.select_dtypes(include=['object']).copy()
-    columns_to_convert = df_object.columns
-    df_object = df_object[columns_to_convert]
-    df_object[columns_to_convert] = df_object.apply(lambda x: x.str.strip())
-
-    for c in columns_to_convert:
-        print('%d %s' % (len(df[c].value_counts().to_dict()), c))
-
-
 def find_equals(df, print_only_different=True):
     values = df.columns.values
     for i in range(0, len(values)):
@@ -116,6 +108,40 @@ def find_equals(df, print_only_different=True):
                         print("Pair: %s x %s" % (values[i], values[j]))
                 else:
                     print("Pair: %s x %s: %d" % (values[i], values[j], is_equal))
+
+
+def get_top_cor(df, threshold=0.95):
+    cor = df.corr()
+    indices = np.where(cor > threshold)
+    return [(cor.index[x], cor.columns[y]) for x, y in zip(*indices) if x != y and x < y]
+
+
+def find_correlated(df, column_name, threshold=0.5):
+    """
+    Find all columns that are highly correlated to the given
+    :param df:
+    :param column_name:
+    :param threshold:
+    :return:
+
+    """
+    for c in df:
+        if df[c].dtype == 'object':
+            continue
+
+        sub_df = df.loc[~pd.isnull(df[c]) & ~pd.isnull(df[column_name])][[c, column_name]]
+
+        # ?
+        # if len(sub_df) < 100:
+        #     continue
+
+        try:
+            corr = stats.pearsonr(sub_df[c], sub_df[column_name])
+        except ValueError:
+            print('Error with ', c)
+
+        if abs(corr[0]) > threshold:
+            print(c, corr, 'NA:', len(df) - len(sub_df))
 
 
 def find_unstable(l, allowed_std=.025):
@@ -212,6 +238,85 @@ def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target
     # TODO make more rands with different seeds
     subs = df.sample(frac=.7, random_state=seed, replace=True)
 
+    check_columns = df.columns.values
+    check_columns = [x for x in check_columns if x not in skip_columns]
+
+    for c in check_columns:
+        # TODO check
+        a = roc_auc_score(subs.loc[~pd.isnull(subs[c])][target_name],
+                          subs.loc[~pd.isnull(subs[c])][c])
+
+        # if not subs[c].isnull().values.any():
+        #     a = roc_auc_score(subs[target_name], subs[c])
+        #     # print("%0.3f: %s" % (a, c))
+        res[c] = a
+
+    functions = {
+        '*': lambda x, y: x * y,
+        '+**2': lambda x, y: x + y ** 2,
+        '2**+': lambda x, y: x ** 2 + y,
+        '+log': lambda x, y: x + np.log(y + 0.000001),
+        '*log': lambda x, y: x * np.log(y + 0.000001),
+        'log+': lambda x, y: np.log(x + 0.000001) + y,
+        'log*': lambda x, y: np.log(x + 0.000001) * y,
+        '/': lambda x, y: x / y,
+        '/r': lambda x, y: y / x,
+        '+': lambda x, y: x + y,
+        '-': lambda x, y: x - y,
+        # '-r': lambda x, y: y - x,
+    }
+
+    i = 0
+    for x1 in check_columns:
+        j = 0
+        for x2 in check_columns:
+            if i > j and x1 in res.keys() and x2 in res.keys():
+                for op, fn in functions.items():
+                    r = fn(subs[x1], subs[x2])
+                    r = r.replace([np.inf], 10000)
+                    r = r.replace([-np.inf], -10000)
+                    count_na = len(r.loc[pd.isnull(r)])
+                    count_s = r.sum()
+
+                    if ((total - count_na) / total < na_threshold) \
+                            or count_s == 0:
+                        continue
+
+                    new_auc = roc_auc_score(subs.ix[~np.isnan(r)][target_name],
+                                            r.ix[~np.isnan(r)])
+
+                    if abs(new_auc - .5) > abs(res[x1] - .5) + gain_percent / 100 \
+                            and abs(new_auc - .5) > abs(res[x2] - .5) + gain_percent / 100:
+                        print("%.4f * %.4f -> %.4f %s %s %s %d" %
+                              (res[x1], res[x2], new_auc, x1, op, x2, count_na))
+
+                        k = "%s %s %s %d" % (x1, op, x2, count_na)
+                        v = "%.4f * %.4f -> %.4f" % (res[x1], res[x2], new_auc)
+                        if k in fin:
+                            fin[k].append(v)
+                        else:
+                            fin[k] = [v]
+
+                            # res[c] = a
+            j += 1
+        i += 1
+    return fin
+
+
+def find_features_combs_v_local(df, gain_percent=1.4, na_threshold=0.98, seed=42, target_name='isfraud',
+                        skip_columns=()):
+    """
+    find_combs(df_prepared2, gain_percent=2, na_threshold=0.95, seed=42)
+    """
+    gc.collect()
+    fin = {}
+
+    total = len(df) * .7
+    res = {}
+
+    # TODO make more rands with different seeds
+    subs = df.sample(frac=.7, random_state=seed, replace=True)
+
     for c in df.columns.values:
         if not subs[c].isnull().values.any() and c not in skip_columns:
             a = roc_auc_score(subs[target_name], subs[c])
@@ -274,7 +379,6 @@ def find_features_combs(df, gain_percent=1.4, na_threshold=0.98, seed=42, target
             j += 1
         i += 1
     return fin
-
 
 def show_binary_comparison_for_regression(df, feat_name, by_fea='y', left=0, right=1):
     print(df.groupby(feat_name, as_index=False)[by_fea]
@@ -497,3 +601,87 @@ def explore_var(df, name):
         plt.show()
 
     print()
+
+
+def cramers_corrected_stat(row1, row2):
+    """ calculate Cramers V statistic for categorial-categorial association.
+        uses correction from Bergsma and Wicher,
+        Journal of the Korean Statistical Society 42 (2013): 323-328
+    """
+    try:
+        confusion_matrix = pd.crosstab(row1, row2)
+    except TypeError:
+        return None
+
+    if len(confusion_matrix) == 0:
+        return None
+
+    chi2 = stats.chi2_contingency(confusion_matrix)[0]
+    n = confusion_matrix.sum().sum()
+
+    if n == 1:
+        return None
+
+    phi2 = chi2 / n
+    r, k = confusion_matrix.shape
+    phi2corr = max(0, phi2 - ((k - 1) * (r - 1)) / (n - 1))
+    rcorr = r - ((r - 1) ** 2) / (n - 1)
+    kcorr = k - ((k - 1) ** 2) / (n - 1)
+    d = min((kcorr - 1), (rcorr - 1))
+    return np.sqrt(phi2corr / d) if d > 0 else None
+
+
+def calc_trusted_auc(df, c, target, n=30, default_auc=0.5):
+    df_tmp = df.loc[~pd.isnull(df[c])][[c, target]]
+    results = []
+    if not len(df_tmp):
+        return default_auc
+
+    for i in range(n):
+        sample = df_tmp.sample(frac=1, replace=True)
+        try:
+            results.append(roc_auc_score(sample[target], sample[c]))
+        except ValueError:
+            return default_auc
+
+    return results
+
+
+# Draft
+def check_data_consistency(df, column):
+    from_ix, to_ix, l = 0, 0, len(df_all)
+
+    num_splits = 8
+    chunk_size = 1
+    for i in range(1, num_splits + 2):
+        to_ix = i / (num_splits + 1)
+        current_set = df.loc[math.ceil(from_ix * l):math.ceil(to_ix * l), column]
+
+        if i > 1:
+            print(stats1.ks_2samp(prev_set, current_set))
+            print(stats1.ttest_ind(prev_set.loc[~pd.isnull(prev_set)],
+                                   current_set.loc[~pd.isnull(current_set)]))
+
+            na_prev = round(len(prev_set.loc[pd.isnull(prev_set)]) * 100 / chunk_size, 4)
+            na_curr = round(len(current_set.loc[pd.isnull(current_set)]) * 100 / chunk_size, 4)
+            print('NA prev: %.2f%% NA curr: %.2f%% ' % (na_prev, na_curr), '\n')
+        else:
+            chunk_size = len(df) / (num_splits + 1)
+
+        prev_set = current_set
+        from_ix = to_ix
+        # For a different distribution, we can reject the null hypothesis since the pvalue is below 1%:
+
+# r = []
+# for i, c in enumerate(df_all.columns.values):
+#     aucs = calc_trusted_auc(df_all, c, target)
+#     if np.abs(np.mean(aucs) - 0.5) > 0.001:
+#         print(i, c, round(np.mean(aucs), 4), round(np.std(aucs), 4))
+#         r.append({'column': c, 'mean': round(np.mean(aucs), 4), 'std': round(np.std(aucs), 4),
+#                   'min': round(np.min(aucs), 4), 'max': round(np.max(aucs), 4),
+#                   'na_ratio': len(df_all.loc[~pd.isnull(df_all[c])]) / len(df_all)})
+#
+#
+# r = pd.DataFrame(r)
+# r['diff'] = np.abs(r['mean'] - 0.5)
+# r.query('std < 0.07').sort_values(['diff'], ascending=[False]).to_csv('data/near_aucs_filtered.txt', index=False)

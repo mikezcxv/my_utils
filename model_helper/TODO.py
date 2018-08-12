@@ -8,6 +8,7 @@
 # Grid search
     # https://www.kaggle.com/tanitter/grid-search-xgboost-with-scikit-learn
     # https://www.kaggle.com/phunter/xgboost-with-gridsearchcv
+    # https://github.com/fmfn/BayesianOptimization/blob/master/examples/visualization.ipynb
 
 # Features selection
     # feature_selection.GenericUnivariateSelect([…])	Univariate feature selector with configurable strategy.

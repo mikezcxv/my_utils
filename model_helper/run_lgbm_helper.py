@@ -1,5 +1,4 @@
-import xgboost as xgb
-from xgboost.sklearn import XGBClassifier
+import lightgbm as lgb
 import numpy as np
 import pandas as pd
 import math
@@ -20,7 +19,6 @@ from model_helper.visualize import *
 import random
 import pickle
 from tqdm import tqdm
-import xgbfir
 import operator
 
 
@@ -31,18 +29,15 @@ def split_into_folds(df, target, random_state=42):
         res.append((df.iloc[big_ind], df.iloc[small_ind]))
 
 
-class RunXGB:
-    def __init__(self, xgb_params, df, df_train, target_train, df_test, target_test, id_test, target, pk,
-                 num_of_test_splits=5):
+class RunLGBM:
+    def __init__(self, params, df,
+                 df_train, target_train,
+                 df_test, target_test, id_test,
+                 df_oot, target_oot, id_oot,
+                 target, pk,
+                 num_of_test_splits=5, categorical_names=[], experiment_title='ExperimentTitle'):
 
-        if 'scale_pos_weight' in xgb_params:
-            bad_ratio = df.shape[0] / df[target].sum()
-            if abs(bad_ratio - xgb_params['scale_pos_weight']) > 0.05:
-                print('!Always check scale_pos_weight on new dataset\n',
-                              'Param is %.10f but actual is %.10f' %
-                              (xgb_params['scale_pos_weight'], bad_ratio))
-
-        self.xgb_params = xgb_params
+        self.params = params
         self.target = target
         self.pk = pk
         self.df = df
@@ -51,12 +46,123 @@ class RunXGB:
         self.df_test = df_test
         self.target_train = target_train
         self.target_test = target_test
-        self.dtrain = xgb.DMatrix(df_train, target_train)
-        self.dtest = xgb.DMatrix(df_test)
+        self.target_oot = target_oot
+        self.dtrain = lgb.Dataset(df_train, label=target_train, categorical_feature=categorical_names)
+        self.dtest = lgb.Dataset(df_test, label=target_test, categorical_feature=categorical_names)
+        self.d_oot = lgb.Dataset(df_oot, label=target_oot, categorical_feature=categorical_names)
+        self.df_oot = df_oot
+        self.target_oot = target_oot
+        self.id_oot = id_oot
+        self.categorical_names = categorical_names
         self.id_test = id_test
+        self.experiment_title = experiment_title
 
+    def get_features_importance(self, clf, limit_top=25, debug=False, show_fi=True):
+        if debug:
+            print("Features importance...")
+        gain = clf.feature_importance('gain')
+        ft = pd.DataFrame({'feature': clf.feature_name(),
+                           'split': clf.feature_importance('split'),
+                           'gain': 100 * gain / gain.sum()}).sort_values('gain', ascending=False)
+        # plt.figure()
+        if show_fi:
+            ft[['feature', 'gain']].head(limit_top).plot(kind='barh', x='feature', y='gain',
+                                                         legend=False, figsize=(10, 20))
+            plt.gcf().savefig('imgs/%s_features_importance.png' % self.experiment_title)
+        return ft
+
+    def go2(self, num_boost_round=850, show_graph=True, threshold_useless=3, files_prefix='',
+            debug=True, show_auc=True,
+            count_extra_run=None, save_features_info=True, save_averaged=False,
+            step_without_bagging=3, seed_shift=0):
+
+        # TODO save classifier to the local properties
+        params = dict(self.params, silent=1, seed=0 + seed_shift)
+        clf = lgb.train(params, train_set=self.dtrain, num_boost_round=num_boost_round,
+                        valid_sets=[self.dtrain, self.dtest],
+                        early_stopping_rounds=30, verbose_eval=30)
+
+        features_scores = self.get_features_importance(clf, limit_top=25, debug=debug, show_fi=show_graph)
+        if debug:
+            print("Using %d features" % len(features_scores[features_scores > 0]))
+            print(features_scores)
+
+        list_useless = features_scores[features_scores['split'] == 0]['feature']
+        almost_useless = features_scores[(features_scores['split'] > 0)
+                                         & (features_scores['split'] < threshold_useless)]['feature']
+
+        if debug:
+            print("List useless:", list_useless, '\n', "List almost useless:", almost_useless)
+
+        y_pred = clf.predict(self.df_oot)
+        _roc = roc_auc_score(self.target_oot, y_pred)
+
+        predictions_extra_run = []
+        df_preds = pd.DataFrame({'pred_first': y_pred})
+
+        rocs = [_roc]
+
+        if count_extra_run:
+            for i in tqdm(range(count_extra_run)):
+                if (i + 1) % step_without_bagging == 0:
+                    dtrain = lgb.Dataset(self.df_train, label=self.target_train,
+                                         categorical_feature=self.categorical_names)
+                else:
+                    df_train_tmp = self.df_train.sample(frac=1, replace=True, random_state=i + 1 + seed_shift)
+                    target_train_tmp = self.target_train.ix[df_train_tmp.index]
+                    dtrain = lgb.Dataset(df_train_tmp, label=target_train_tmp,
+                                         categorical_feature=self.categorical_names)
+
+                extra_model = lgb.train(dict(params, seed=i + 1 + seed_shift), train_set=dtrain,
+                                        num_boost_round=num_boost_round,
+                                        valid_sets=[self.dtrain, self.dtest],
+                                        early_stopping_rounds=30, verbose_eval=50)
+                extra_y_pred = extra_model.predict(self.df_oot)
+                rocs.append(roc_auc_score(self.target_oot, extra_y_pred))
+                predictions_extra_run.append(extra_y_pred)
+                df_preds['pred_' + str(i) + '_is_full_%s' % str(int(i % step_without_bagging))] = extra_y_pred
+
+                if save_averaged:
+                    if debug:
+                        print('Results are averaged')
+                    for prediction in predictions_extra_run:
+                        y_pred += prediction
+
+                y_pred /= count_extra_run + 1
+
+        if debug:
+            print('Avg auc: %.2f +- %.2f; [%.2f .. %.2f]; range: %.2f; median: %.2f' %
+                  (np.mean(rocs) * 100, np.std(rocs) * 100, np.min(rocs) * 100, np.max(rocs) * 100,
+                   (np.max(rocs) - np.min(rocs)) * 100, np.median(rocs) * 100))
+            print('Averaged model auc: %.2f' % (roc_auc_score(self.target_oot, y_pred) * 100))
+
+        if show_auc:
+            draw_roc_curve(y_pred, self.target_oot, files_prefix + '_auc.png', 'imgs', _roc)
+
+        if debug:
+            if count_extra_run is None:
+                print("Roc on test: %.2f (one run)" % (_roc * 100))
+
+            print('Features info: ' + 'imgs/' + files_prefix + 'features.png')
+            print('Distribution: imgs/' + files_prefix + 'distributions.png')
+            print('Scores: data/' + files_prefix + 'result.csv')
+
+        result = pd.DataFrame({'id': self.id_oot, self.target: y_pred, 'realVal': self.target_oot})
+
+        if show_graph:
+            draw_distributions(result, self.target, files_prefix + 'distributions.png', 'imgs')
+
+        result.to_csv('data/' + files_prefix + 'result.csv', index=False)
+
+        return result, df_preds, {'used': features_scores, 'useless': list_useless,
+                                  'almost_useless': almost_useless}
+
+    # TODO
     def get_max_boost(self, debug=False, num_folds=6, max_boost_rounds=1500, verbose_eval=50,
                       count_extra_run=1, metric='auc'):
+
+        raise NotImplementedError()
+
         # Data structure in which to save out-of-folds preds
         early_stopping_rounds = 30
 
@@ -109,9 +215,12 @@ class RunXGB:
 
         return int(num_boost_rounds), pd.DataFrame(res)[['type', 'val', 'std', 'min', 'max', 'median']]
 
+    # TODO
     def get_max_boost_by_last_periods(self, debug=False, count_last_periods=3):
         #         kf = KFold(n_splits=self.num_of_test_splits)
         #         kf.get_n_splits(self.df_train)
+
+        raise NotImplementedError()
 
         kf = KFold(n_splits=self.num_of_test_splits)
         l = kf.get_n_splits(self.df_train)
@@ -140,12 +249,16 @@ class RunXGB:
 
         return num_boost_rounds
 
-    def load_model(self, model_full_path='data/fraud_model.dat'):
+    def load_model(self, model_full_path='data/model.dat'):
         return pickle.load(open(model_full_path, "rb"))
 
+    # TODO
     def go_and_save_model(self, num_boost_round, p_o_s, target, show_graph=True, threshold_useless=3,
                           files_prefix='', debug=True, show_auc=True,
-                          model_full_path='data/fraud_model.dat', count_extra_run=1):
+                          model_full_path='data/model.dat', count_extra_run=1):
+
+        raise NotImplementedError()
+
         params = dict(self.xgb_params, silent=1)
 
         df = self.df.copy()
@@ -154,7 +267,7 @@ class RunXGB:
         df_train = df.ix[:, df.columns != target]
         target_train = df.ix[:, target]
         df_train.drop([self.pk], axis=1, inplace=True)
-        dtrain = xgb.DMatrix(df_train, target_train)
+        dtrain = lgbm.Dataset(df_train, target_train)
 
         if debug:
             print(df_train.shape)
@@ -698,7 +811,7 @@ class RunXGB:
                 print()
 
 
-class RunXGBv2(RunXGB):
+class RunLGBMv2(RunLGBM):
     def __init__(self, xgb_params, df, columns, target, pk, oos_split=0.7, num_of_test_splits=5):
 
         df_train = df.ix[:math.ceil(len(df) * oos_split), ]
@@ -714,7 +827,7 @@ class RunXGBv2(RunXGB):
 
         df_test.drop([pk], axis=1, inplace=True)
 
-        super(RunXGBv2, self).__init__(xgb_params, df, df_train, target_train, df_test, target_test,
+        super(RunLGBMv2, self).__init__(xgb_params, df, df_train, target_train, df_test, target_test,
                                        id_test, target, pk, num_of_test_splits)
 
     def cv_xgb2(self, xgb_params, num_boost_rounds=474,
