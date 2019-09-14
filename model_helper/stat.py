@@ -1,9 +1,10 @@
-import math
 import re
-import gc
-import scipy.stats as stats
+import math
+import logging
+
 import pandas as pd
 import numpy as np
+import scipy.stats as stats
 from tqdm import tqdm
 from sklearn.metrics import roc_auc_score
 from model_helper.Transform import *
@@ -12,6 +13,10 @@ import matplotlib
 import gc
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
+
+
+logging.basicConfig()
+logger_stat = logging.getLogger("stat")
 
 
 # describe, show_na, analyze_na - overall
@@ -404,37 +409,38 @@ def show_binary_comparison_for_regression(df, feat_name, by_fea='y', left=0, rig
     print(stats.ttest_ind(set1, set2))
 
 
-def iv2(df, column_name, y, min_in_group=30, debug=False, max_classes=200, return_default=-0.000001):
+def iv(df: pd.DataFrame, column_name: str, y: np.array,
+        min_in_group: int=30, max_classes: int=200, return_default: float=-0.000001):
     info = df[column_name].value_counts().to_dict()
     s = 0
 
-    if debug:
-        print(info)
+    logger_stat.debug(info)
 
     c_bad_group = len(df.loc[~pd.isnull(df[column_name]) & (y == 1)]) + 0.0000000000001
     c_good_group = len(df.loc[~pd.isnull(df[column_name]) & (y == 0)]) + 0.0000000000001
 
-    if debug:
-        print("Bad in group: %d; Good in group: %d" % (c_bad_group, c_good_group))
+    logger_stat.debug("Bad in group: %d; Good in group: %d" % (c_bad_group, c_good_group))
 
     if (len(info) > max_classes) or (len(info) < 2):
+        logger_stat.warn(f'iv for {column_name} is not calculated')
         return return_default
 
     for k, v in info.items():
-        bad_count = len(df.loc[(df[column_name] == k) & (y == 1)])
-        good_count = len(df.loc[(df[column_name] == k) & (y == 0)])
+        bad_count = len(df.loc[(df[column_name].isin([k])) & (y == 1)])
+        good_count = len(df.loc[(df[column_name].isin([k])) & (y == 0)])
 
         bad_rate = 0.0000000000001 + (bad_count / c_bad_group)
         good_rate = good_count / c_good_group
         woe = np.log(good_rate / bad_rate)
-        if debug:
-            print("Val: %s; In group: %d; Bad r: %.4f; Bad count: %d; Good r: %.4f; Goog c: %d; Woe: %.4f"
+
+        logger_stat.debug("Val: %s; In group: %d; Bad r: %.4f; Bad count: %d; Good r: %.4f; Goog c: %d; Woe: %.4f"
                   % (k, v, bad_rate, bad_count, good_rate, good_count, woe))
+
         if v > min_in_group:
             s += (good_rate - bad_rate) * woe
+        else:
+            logger_stat.warning(f' Value {k} is skipped due to small number per level')
 
-    if debug:
-        print(s)
     return s
 
 
@@ -465,7 +471,6 @@ def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), o
             count_na[str(i) + '_' + c] = len(_df.loc[np.isnan(_df[c])])
         _df.fillna(na_value, inplace=True)
 
-    res = []
     df_csv = pd.DataFrame(columns=['Feature', 'Time period', 'Auc', 'IV', 'Count Groups', 'Count NA', 'Percent NA'])
     for c in X.columns.values:
         if c in skip_columns:
@@ -499,8 +504,8 @@ def features_info(df, split_ranges=(0, 1), target_name='y', skip_columns=(''), o
                 f_roc_clean[i] = -0.00001
 
             # TODO don't calculate IV for continuous vars
-            _iv[i] = iv2(_df, c, _y)
-            _iv_clean[i] = iv2(_df.loc[~_df[c].isin([na_value])], c, _y)
+            _iv[i] = iv(_df, c, _y)
+            _iv_clean[i] = iv(_df.loc[~_df[c].isin([na_value])], c, _y)
             # _iv = 0 # s = 1 / (1 + np.exp(-df_train[c])) # f_roc2 = roc_auc_score(target_train, s)
 
             # _ks = compare_binary(_df, 'SecondPaymentDelinquencyClass', target=c)
