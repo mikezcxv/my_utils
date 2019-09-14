@@ -135,6 +135,7 @@ class AnalyzeResults():
     """
     ar = AnalyzeResults(analyze_df, analyze_df['score'], bound)
     print(ar.confusion_matrix())
+    ar.show_top(n=20, mode='most_std')
     """
     read_img_shape = False
 
